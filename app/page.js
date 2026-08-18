@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import moment from 'moment';
 import { generateGatePass } from '@/utils/generatePDF';
+import LoginButton from '@/components/LoginButton';
 
 const SignatureCanvas = dynamic(() => import('react-signature-canvas'), { ssr: false });
 
@@ -519,8 +520,8 @@ export default function RequisitionPortal() {
             </div>
           </div>
 
-          {/* User Role Switcher & Logout */}
-          <div className="flex items-center gap-2">
+          {/* User Role Switcher & Azure OAuth Login */}
+          <div className="flex items-center gap-2 flex-wrap">
             <div className="hidden md:flex items-center gap-1.5 bg-stone-950/80 px-3 py-1.5 rounded-xl border border-stone-800 text-xs font-bold text-stone-300">
               <span className="text-[10px] text-stone-500 uppercase tracking-wider">Role:</span>
               <span className={`px-2 py-0.5 rounded-lg text-[10px] uppercase tracking-widest ${userRole === 'admin' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : userRole === 'moderator' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'}`}>
@@ -528,9 +529,7 @@ export default function RequisitionPortal() {
               </span>
             </div>
 
-            <button onClick={handleLogout} className="flex items-center gap-2 text-xs font-bold bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 px-3.5 py-2 rounded-xl transition-all">
-              <LogOut size={14}/> <span className="hidden sm:inline">Sign Out</span>
-            </button>
+            <LoginButton />
           </div>
         </div>
 
