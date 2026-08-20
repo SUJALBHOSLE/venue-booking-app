@@ -15,8 +15,9 @@ export default function InspectProtection() {
     if (typeof window !== 'undefined') {
       const host = window.location.hostname;
       const isLocalhost = host === 'localhost' || host === '127.0.0.1' || host.includes('192.168.');
+      const isVercel = host.endsWith('.vercel.app');
       
-      if (!isLocalhost && !host.startsWith('www.')) {
+      if (!isLocalhost && !isVercel && !host.startsWith('www.')) {
         const canonicalUrl = `https://www.${host}${window.location.pathname}${window.location.search}`;
         window.location.replace(canonicalUrl);
       }
