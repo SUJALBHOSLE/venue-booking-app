@@ -6,10 +6,10 @@ import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import './globals.css';
 import InspectProtection from '@/components/InspectProtection';
-import { resolveUserRole } from '@/lib/accessControl';
-import { ShieldCheck, Sparkles, Building2, Lock, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
+import { resolveUserRole, getUserProfile, saveUserProfile } from '@/lib/accessControl';
+import { ShieldCheck, Sparkles, Building2, Lock, AlertCircle, ArrowRight, User, Phone, Briefcase, GraduationCap } from 'lucide-react';
 
-const IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 15 Minutes Inactivity Timeout
+const IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 
 export default function RootLayout({ children }) {
   const [session, setSession] = useState(null);
@@ -17,8 +17,16 @@ export default function RootLayout({ children }) {
   const [userEmail, setUserEmail] = useState('');
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState('');
-  const idleTimerRef = useRef(null);
+  const [needsProfileOnboarding, setNeedsProfileOnboarding] = useState(false);
+  
+  // Profile Onboarding Form State
+  const [profileName, setProfileName] = useState('');
+  const [profileContact, setProfileContact] = useState('');
+  const [profileInstitute, setProfileInstitute] = useState('VSIT');
+  const [profileDepartment, setProfileDepartment] = useState('Information Technology');
+  const [profileEmployeeId, setProfileEmployeeId] = useState('');
 
+  const idleTimerRef = useRef(null);
   const ALLOWED_DOMAINS = ['vdt.edu.in', 'vsit.edu.in', 'vit.edu.in', 'vpt.edu.in', 'vcp.edu.in', 'vdt.org'];
 
   useEffect(() => {
@@ -33,18 +41,13 @@ export default function RootLayout({ children }) {
     };
   }, []);
 
-  // --- IDLE INACTIVITY SESSION TIMEOUT & AUTO-LOGOUT ---
   useEffect(() => {
     if (session || userRole) {
       resetIdleTimer();
       const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
-      
-      const handleUserActivity = () => {
-        resetIdleTimer();
-      };
+      const handleUserActivity = () => resetIdleTimer();
 
       events.forEach(event => window.addEventListener(event, handleUserActivity));
-
       return () => {
         events.forEach(event => window.removeEventListener(event, handleUserActivity));
         clearIdleTimer();
@@ -69,15 +72,11 @@ export default function RootLayout({ children }) {
   const handleIdleLogout = async () => {
     try {
       await supabase.auth.signOut();
-    } catch (e) {
-      console.log("Signout note:", e);
-    }
-    // Clean all session data & cookies
+    } catch (e) {}
     if (typeof window !== 'undefined') {
       window.sessionStorage.clear();
       window.localStorage.removeItem('userRole');
       window.localStorage.removeItem('userEmail');
-      // Wipe any lingering cookies
       document.cookie.split(";").forEach((c) => {
         document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
       });
@@ -85,18 +84,22 @@ export default function RootLayout({ children }) {
     setSession(null);
     setUserRole(null);
     setUserEmail('');
-    alert("⚠️ Security Alert: Your session has expired due to 15 minutes of inactivity. Please sign in again with Microsoft Outlook.");
+    alert("⚠️ Security Notice: Session closed after 15 minutes of inactivity.");
     window.location.reload();
   };
 
   const checkAuth = async () => {
-    // Check session-only storage
     const savedRole = typeof window !== 'undefined' ? window.sessionStorage.getItem('userRole') : null;
     const savedEmail = typeof window !== 'undefined' ? window.sessionStorage.getItem('userEmail') : null;
     
     if (savedRole && savedEmail) {
       setUserRole(savedRole);
       setUserEmail(savedEmail);
+      
+      const existingProfile = getUserProfile(savedEmail);
+      if (!existingProfile || !existingProfile.isCompleted) {
+        setNeedsProfileOnboarding(true);
+      }
       setLoading(false);
       return;
     }
@@ -112,39 +115,31 @@ export default function RootLayout({ children }) {
     if (session?.user) {
       const email = (session.user.email || '').trim().toLowerCase();
       const emailDomain = email.split('@')[1] || '';
-      
-      const isAllowedDomain = ALLOWED_DOMAINS.includes(emailDomain) || ALLOWED_DOMAINS.some(d => email.endsWith(d));
+      const isAllowed = ALLOWED_DOMAINS.includes(emailDomain) || ALLOWED_DOMAINS.some(d => email.endsWith(d));
 
-      if (isAllowedDomain) {
+      if (isAllowed) {
         const role = resolveUserRole(email);
         setSession(session);
         setUserRole(role);
         setUserEmail(email);
         
-        // Save in session-only storage (no persistent login cookies)
         if (typeof window !== 'undefined') {
           window.sessionStorage.setItem('userRole', role);
           window.sessionStorage.setItem('userEmail', email);
         }
-      } else {
-        const errMsg = `Access Denied: ${email} is not an authorized Vidyalankar institute account. Please use your official Outlook credentials (@vsit.edu.in, @vit.edu.in, @vdt.edu.in).`;
-        setAuthError(errMsg);
-        await supabase.auth.signOut();
-        if (typeof window !== 'undefined') {
-          window.sessionStorage.clear();
+
+        const existingProfile = getUserProfile(email);
+        if (!existingProfile || !existingProfile.isCompleted) {
+          setProfileName(session.user.user_metadata?.full_name || session.user.user_metadata?.name || email.split('@')[0]);
+          setNeedsProfileOnboarding(true);
         }
+      } else {
+        setAuthError(`Access Denied: ${email} is not an authorized institute email address.`);
+        await supabase.auth.signOut();
+        if (typeof window !== 'undefined') window.sessionStorage.clear();
         setSession(null);
         setUserRole(null);
         setUserEmail('');
-      }
-    } else {
-      if (typeof window !== 'undefined') {
-        const savedRole = window.sessionStorage.getItem('userRole');
-        if (!savedRole) {
-          setSession(null);
-          setUserRole(null);
-          setUserEmail('');
-        }
       }
     }
     setLoading(false);
@@ -163,66 +158,88 @@ export default function RootLayout({ children }) {
       });
       if (error) throw error;
     } catch (e) {
-      console.error("Microsoft OAuth error:", e);
-      setAuthError(e.message || "Failed to initiate Microsoft Authentication. Please ensure Azure OAuth is configured.");
+      setAuthError(e.message || "Failed to initiate Microsoft Authentication.");
       setLoading(false);
     }
   };
 
-  // --- SECURE MICROSOFT AUTHENTICATION ONLY SCREEN ---
+  const handleSaveProfileOnboarding = (e) => {
+    e.preventDefault();
+    if (!profileName.trim() || !profileContact.trim()) {
+      return alert("⚠️ Please fill in all required profile details.");
+    }
+
+    const saved = saveUserProfile(userEmail, {
+      name: profileName.trim(),
+      contact: profileContact.trim(),
+      institute: profileInstitute,
+      department: profileDepartment,
+      employeeId: profileEmployeeId.trim() || 'VDT-FACULTY',
+      role: userRole || 'faculty'
+    });
+
+    if (saved) {
+      setNeedsProfileOnboarding(false);
+      alert("✅ Profile successfully registered! Details are now locked.");
+    }
+  };
+
+  // --- FUTURISTIC VR/AR SPATIAL LOGIN SCREEN ---
   if (!loading && !session && !userRole) {
     return (
       <html lang="en" suppressHydrationWarning>
         <head>
-          <title>Vidyalankar Dnyanpeeth Trust | Microsoft Authentication</title>
+          <title>Vidyalankar Dnyanpeeth Trust | Spatial Portal</title>
           <link rel="manifest" href="/manifest.json" />
           <meta name="theme-color" content="#f97316" />
         </head>
-        <body className="min-h-screen bg-stone-900 flex items-center justify-center p-4 relative overflow-hidden font-sans text-stone-100">
+        <body className="min-h-screen bg-[#090a0f] flex items-center justify-center p-4 sm:p-6 relative overflow-hidden font-sans text-stone-100 selection:bg-orange-500 selection:text-white">
           <InspectProtection />
           
-          {/* Ambient Glowing Background Lights */}
-          <div className="absolute top-[-20%] left-[-10%] w-140 h-140 bg-orange-600/30 rounded-full blur-[140px] pointer-events-none animate-pulse"></div>
-          <div className="absolute bottom-[-20%] right-[-10%] w-160 h-160 bg-blue-600/20 rounded-full blur-[160px] pointer-events-none"></div>
-          <div className="absolute top-[30%] right-[20%] w-96 h-96 bg-emerald-500/15 rounded-full blur-[130px] pointer-events-none"></div>
+          {/* Spatial VR/AR Neon Perspective Glows */}
+          <div className="absolute top-[-25%] left-[-15%] w-[600px] h-[600px] bg-gradient-to-br from-orange-600/30 via-amber-500/20 to-transparent rounded-full blur-[150px] pointer-events-none animate-pulse"></div>
+          <div className="absolute bottom-[-25%] right-[-15%] w-[650px] h-[650px] bg-gradient-to-tl from-indigo-600/30 via-purple-600/20 to-transparent rounded-full blur-[160px] pointer-events-none"></div>
+          <div className="absolute top-[40%] right-[30%] w-[350px] h-[350px] bg-emerald-500/10 rounded-full blur-[140px] pointer-events-none"></div>
 
-          <div className="w-full max-w-lg bg-stone-900/85 backdrop-blur-2xl border border-orange-500/30 rounded-[36px] shadow-2xl p-8 sm:p-10 relative z-10 animate-fade-in-up">
+          {/* Spatial Glass Container */}
+          <div className="w-full max-w-[480px] bg-[#12131c]/80 backdrop-blur-3xl border border-white/10 rounded-[38px] shadow-[0_20px_70px_rgba(0,0,0,0.7)] p-8 sm:p-12 relative z-10 animate-fade-in-up">
             
-            <div className="flex justify-center mb-6">
-              <div className="bg-gradient-to-br from-orange-500/20 to-amber-500/10 p-4 rounded-3xl border border-orange-400/30 shadow-inner flex items-center gap-3">
-                <div className="bg-gradient-to-br from-orange-500 to-amber-600 p-2.5 rounded-2xl shadow-lg shadow-orange-500/30 text-white shrink-0">
-                  <Building2 size={24} />
-                </div>
-                <div className="text-left">
-                  <span className="text-xs font-black text-orange-400 uppercase tracking-widest block">VDT Central Portal</span>
-                  <span className="text-[10px] text-stone-400 font-semibold">Vidyalankar Dnyanpeeth Trust</span>
-                </div>
+            {/* Holographic Header Pill */}
+            <div className="flex justify-center mb-8">
+              <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-white/[0.04] border border-white/10 shadow-inner backdrop-blur-md">
+                <div className="w-2.5 h-2.5 rounded-full bg-gradient-to-r from-orange-500 to-amber-400 animate-ping"></div>
+                <span className="text-[11px] font-black tracking-[0.2em] text-orange-400 uppercase">
+                  Vidyalankar Dnyanpeeth Trust
+                </span>
               </div>
             </div>
 
-            <div className="text-center mb-6">
-              <h1 className="text-2xl sm:text-3xl font-black text-orange-400 tracking-tight uppercase flex items-center justify-center gap-2">
-                Venue Booking <Sparkles size={20} className="text-amber-400 animate-spin" />
+            {/* Portal Headline & Clean Description */}
+            <div className="text-center space-y-3 mb-10">
+              <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white uppercase leading-tight bg-gradient-to-r from-white via-stone-100 to-stone-400 bg-clip-text text-transparent">
+                Step Into The Future
               </h1>
-              <p className="text-orange-200/80 text-[11px] font-bold tracking-[0.2em] uppercase mt-1">Multi-Tier Automated Approval System</p>
+              <p className="text-stone-400 text-xs sm:text-[13px] font-medium leading-relaxed max-w-sm mx-auto">
+                Centralized campus portal for automated venue scheduling, multi-tier clearances, and live streaming broadcasts across all trust institutes.
+              </p>
             </div>
 
             {/* Error Message if any */}
             {authError && (
-              <div className="mb-5 p-4 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-300 text-xs font-semibold flex items-start gap-2.5 leading-relaxed animate-shake">
+              <div className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-300 text-xs font-semibold flex items-start gap-2.5 leading-relaxed">
                 <AlertCircle size={18} className="shrink-0 text-red-400 mt-0.5" />
                 <span>{authError}</span>
               </div>
             )}
 
-            {/* Microsoft Azure OAuth Only Sign In */}
-            <div className="space-y-5">
+            {/* Microsoft Azure OAuth Entry Point */}
+            <div className="space-y-6">
               <button 
                 type="button" 
                 onClick={handleMicrosoftLogin} 
-                className="w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest text-white bg-blue-600 hover:bg-blue-700 transition-all active:scale-[0.98] flex items-center justify-center gap-3 shadow-xl shadow-blue-900/40 border border-blue-400/30 group"
+                className="w-full py-4 px-6 rounded-2xl font-black text-xs uppercase tracking-widest text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:via-indigo-500 hover:to-blue-600 transition-all duration-300 shadow-[0_10px_30px_rgba(37,99,235,0.35)] border border-blue-400/30 flex items-center justify-center gap-3 active:scale-[0.98] group"
               >
-                <svg className="w-5 h-5 shrink-0 group-hover:scale-110 transition-transform" viewBox="0 0 23 23">
+                <svg className="w-5 h-5 shrink-0 group-hover:scale-110 transition-transform duration-300" viewBox="0 0 23 23">
                   <path fill="#f35325" d="M1 1h10v10H1z"/>
                   <path fill="#81bc06" d="M12 1h10v10H12z"/>
                   <path fill="#05a6f0" d="M1 12h10v10H1z"/>
@@ -231,34 +248,20 @@ export default function RootLayout({ children }) {
                 <span>Sign in with Microsoft Outlook</span>
               </button>
 
-              {/* Security & Access Policy Badge */}
-              <div className="bg-stone-950/70 border border-stone-800 rounded-2xl p-4 text-[11px] text-stone-400 space-y-2 leading-relaxed">
-                <div className="flex items-center gap-1.5 font-black text-stone-200 uppercase tracking-wider text-[10px]">
-                  <Lock size={12} className="text-orange-400 shrink-0"/> Mandatory Security & Access Policies:
-                </div>
-                <p>&bull; <strong>Strict Microsoft SSO:</strong> Login is restricted exclusively to authenticated Vidyalankar institute Microsoft accounts.</p>
-                <p>&bull; <strong>Session Isolation:</strong> No persistent login cookies are stored. Sessions expire automatically on tab close or after <strong>15 minutes of idle time</strong>.</p>
-                <p>&bull; <strong>Authorized Role Mapping:</strong></p>
-                <div className="pl-3 text-[10px] space-y-1 font-mono text-stone-300">
-                  <div className="text-emerald-400">&bull; Admin: sujal.bhosle1@vsit.edu.in, asif.rampurawala@vsit.edu.in</div>
-                  <div className="text-blue-400">&bull; Moderator: sujal.bhosle@vsit.edu.in, media.admin@vsit.edu.in</div>
-                  <div className="text-amber-400">&bull; Faculty: All other @vsit.edu.in, @vit.edu.in, @vdt.edu.in logins</div>
-                </div>
+              <div className="pt-4 border-t border-white/5 text-center">
+                <p className="text-[11px] text-stone-500 font-semibold tracking-wider uppercase">
+                  &copy; {new Date().getFullYear()} Vidyalankar Dnyanpeeth Trust
+                </p>
               </div>
             </div>
 
-            <div className="mt-6 pt-4 border-t border-stone-800 text-center">
-              <p className="text-[10px] text-stone-500 font-semibold tracking-wider uppercase">
-                &copy; {new Date().getFullYear()} Vidyalankar Dnyanpeeth Trust. All Rights Reserved.
-              </p>
-            </div>
           </div>
         </body>
       </html>
     );
   }
 
-  // --- MAIN APPLICATION LAYOUT ---
+  // --- MAIN APPLICATION LAYOUT & FIRST-TIME PROFILE ONBOARDING MODAL ---
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -268,12 +271,118 @@ export default function RootLayout({ children }) {
       </head>
       <body className="bg-amber-50/40 text-stone-900 font-sans min-h-screen">
         <InspectProtection />
+        
         {loading && (
-          <div className="fixed inset-0 bg-stone-900/80 backdrop-blur-md z-100 flex flex-col items-center justify-center gap-4 text-orange-400">
-            <div className="h-12 w-12 rounded-full border-4 border-orange-200 border-t-orange-600 animate-spin"></div>
-            <p className="text-xs font-bold uppercase tracking-widest text-stone-200">Verifying Microsoft Authentication...</p>
+          <div className="fixed inset-0 bg-[#090a0f]/90 backdrop-blur-md z-100 flex flex-col items-center justify-center gap-4 text-orange-400">
+            <div className="h-12 w-12 rounded-full border-4 border-orange-500/20 border-t-orange-500 animate-spin"></div>
+            <p className="text-xs font-bold uppercase tracking-widest text-stone-200">Connecting Vidyalankar Portal...</p>
           </div>
         )}
+
+        {/* First-Time User Profile Setup Modal */}
+        {needsProfileOnboarding && (
+          <div className="fixed inset-0 z-100 bg-[#090a0f]/85 backdrop-blur-2xl flex items-center justify-center p-4">
+            <div className="w-full max-w-lg bg-[#12131c] border border-white/10 rounded-[36px] shadow-2xl p-8 sm:p-10 space-y-6 animate-fade-in-up text-white">
+              
+              <div className="border-b border-white/10 pb-4">
+                <span className="bg-orange-500/20 text-orange-400 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border border-orange-500/30 inline-block mb-2">
+                  First-Time Account Setup
+                </span>
+                <h3 className="text-2xl font-black uppercase tracking-tight">
+                  Complete Your Profile
+                </h3>
+                <p className="text-xs text-stone-400 mt-1">
+                  Please provide your contact and department details to finalize your account records. Once submitted, these details are locked and can only be altered by an Admin.
+                </p>
+              </div>
+
+              <form onSubmit={handleSaveProfileOnboarding} className="space-y-4">
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-stone-400 block mb-1.5 flex items-center gap-1.5">
+                    <User size={13} className="text-orange-400"/> Full Name
+                  </label>
+                  <input 
+                    type="text" 
+                    value={profileName} 
+                    onChange={(e) => setProfileName(e.target.value)} 
+                    placeholder="e.g. Dr. Faculty Name" 
+                    className="w-full bg-[#1b1d2a] border border-white/10 p-3.5 rounded-2xl text-xs font-bold text-white outline-none focus:border-orange-500 transition-colors"
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-stone-400 block mb-1.5 flex items-center gap-1.5">
+                      <Phone size={13} className="text-emerald-400"/> Contact Mobile
+                    </label>
+                    <input 
+                      type="tel" 
+                      value={profileContact} 
+                      onChange={(e) => setProfileContact(e.target.value)} 
+                      placeholder="+91 98765 43210" 
+                      className="w-full bg-[#1b1d2a] border border-white/10 p-3.5 rounded-2xl text-xs font-bold text-white outline-none focus:border-orange-500 transition-colors"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-stone-400 block mb-1.5 flex items-center gap-1.5">
+                      <GraduationCap size={13} className="text-blue-400"/> Institute
+                    </label>
+                    <select 
+                      value={profileInstitute} 
+                      onChange={(e) => setProfileInstitute(e.target.value)} 
+                      className="w-full bg-[#1b1d2a] border border-white/10 p-3.5 rounded-2xl text-xs font-bold text-white outline-none focus:border-orange-500"
+                    >
+                      {['VSIT', 'VIT', 'VDT', 'VPT', 'VSB', 'VCP', 'VIIE'].map(inst => (
+                        <option key={inst} value={inst}>{inst}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-stone-400 block mb-1.5 flex items-center gap-1.5">
+                      <Briefcase size={13} className="text-purple-400"/> Department
+                    </label>
+                    <input 
+                      type="text" 
+                      value={profileDepartment} 
+                      onChange={(e) => setProfileDepartment(e.target.value)} 
+                      placeholder="e.g. Information Technology" 
+                      className="w-full bg-[#1b1d2a] border border-white/10 p-3.5 rounded-2xl text-xs font-bold text-white outline-none focus:border-orange-500 transition-colors"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-stone-400 block mb-1.5">
+                      Employee / Faculty ID
+                    </label>
+                    <input 
+                      type="text" 
+                      value={profileEmployeeId} 
+                      onChange={(e) => setProfileEmployeeId(e.target.value)} 
+                      placeholder="e.g. EMP-2026-042" 
+                      className="w-full bg-[#1b1d2a] border border-white/10 p-3.5 rounded-2xl text-xs font-bold text-white outline-none focus:border-orange-500"
+                    />
+                  </div>
+                </div>
+
+                <button 
+                  type="submit" 
+                  className="w-full py-4 mt-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-black text-xs uppercase tracking-wider rounded-2xl transition-all shadow-xl shadow-orange-500/25 flex items-center justify-center gap-2"
+                >
+                  <span>Save & Confirm Verified Profile</span> <ArrowRight size={16}/>
+                </button>
+              </form>
+
+            </div>
+          </div>
+        )}
+
         {children}
       </body>
     </html>

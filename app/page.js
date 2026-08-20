@@ -17,7 +17,7 @@ import { generateGatePass } from '@/utils/generatePDF';
 import LoginButton from '@/components/LoginButton';
 import ThemeToggle from '@/components/ThemeToggle';
 import InteractiveCalendarWidget from '@/components/InteractiveCalendarWidget';
-import { getUserRolesRegistry, setUserRoleRights, removeUserRoleRights, resolveUserRole } from '@/lib/accessControl';
+import { getUserRolesRegistry, setUserRoleRights, removeUserRoleRights, resolveUserRole, getAllUserProfiles, getUserProfile, adminUpdateUserProfile } from '@/lib/accessControl';
 
 const SignatureCanvas = dynamic(() => import('react-signature-canvas'), { ssr: false });
 
@@ -177,6 +177,8 @@ export default function RequisitionPortal() {
   const [activeTab, setActiveTab] = useState('landing-calendar'); // 'landing-calendar', 'book', 'requirements', 'analytics', 'chatbot', 'moderator', 'admin', 'my-bookings'
   const [userRole, setUserRole] = useState('faculty'); // 'faculty', 'moderator', 'admin'
   const [userRolesRegistry, setUserRolesRegistry] = useState(getUserRolesRegistry());
+  const [userProfiles, setUserProfiles] = useState(getAllUserProfiles());
+  const [adminEditingProfileModal, setAdminEditingProfileModal] = useState(null);
   const [newUserEmailInput, setNewUserEmailInput] = useState('');
   const [newUserNameInput, setNewUserNameInput] = useState('');
   const [newUserRoleInput, setNewUserRoleInput] = useState('moderator');
@@ -243,6 +245,16 @@ export default function RequisitionPortal() {
     setUserRole(savedRole);
     setUserEmail(savedEmail);
     setUserRolesRegistry(getUserRolesRegistry());
+    const profiles = getAllUserProfiles();
+    setUserProfiles(profiles);
+    
+    // Auto-prefill coordinator info from profile if exists
+    const myProfile = profiles[savedEmail.toLowerCase()] || getUserProfile(savedEmail);
+    if (myProfile) {
+      if (myProfile.name) setValue('coordinatorName', myProfile.name);
+      if (myProfile.institute) setValue('institute', myProfile.institute);
+    }
+
     fetchBookingsFromDatabase();
 
     const savedTheme = localStorage.getItem('theme') || 'dark';
@@ -340,6 +352,19 @@ export default function RequisitionPortal() {
       setUserRolesRegistry(updated);
       alert(`Role rights revoked for ${email}.`);
     }
+  };
+
+  const handleAdminUpdateProfileSubmit = (e) => {
+    e.preventDefault();
+    if (!adminEditingProfileModal) return;
+    const updated = adminUpdateUserProfile(adminEditingProfileModal.email, adminEditingProfileModal);
+    setUserProfiles(updated);
+    if (adminEditingProfileModal.role) {
+      const updatedRoles = setUserRoleRights(adminEditingProfileModal.email, adminEditingProfileModal.role, adminEditingProfileModal.name);
+      setUserRolesRegistry(updatedRoles);
+    }
+    alert(`✅ Successfully updated profile record for ${adminEditingProfileModal.email}!`);
+    setAdminEditingProfileModal(null);
   };
 
   // --- NATURAL HUMAN-LIKE STEP-BY-STEP AI CHATBOT LOGIC ---
@@ -1757,6 +1782,71 @@ Your department moderator will review and approve the request, and you will inst
                   </tbody>
                 </table>
               </div>
+
+              {/* Active User Profiles Registry (Admin Protected) */}
+              <div className="mt-8 pt-6 border-t border-amber-500/20">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h4 className={`text-sm font-black uppercase tracking-wider ${theme === 'light' ? 'text-amber-950' : 'text-stone-200'}`}>
+                      Verified User Records & Campus Profiles
+                    </h4>
+                    <p className={`text-[11px] ${theme === 'light' ? 'text-amber-900/70' : 'text-stone-400'}`}>
+                      User details locked upon first login. Only Admins can modify department, designation, and contact records.
+                    </p>
+                  </div>
+                  <span className="bg-emerald-500/20 text-emerald-600 border border-emerald-500/30 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-xl">
+                    Admin Protected
+                  </span>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className={`border-b ${theme === 'light' ? 'border-amber-300/80 text-amber-950' : 'border-stone-800 text-stone-400'}`}>
+                        <th className="pb-3 font-black uppercase tracking-wider">Faculty / User</th>
+                        <th className="pb-3 font-black uppercase tracking-wider">Institute & Dept</th>
+                        <th className="pb-3 font-black uppercase tracking-wider">Contact & ID</th>
+                        <th className="pb-3 font-black uppercase tracking-wider text-right">Admin Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className={`divide-y ${theme === 'light' ? 'divide-amber-200' : 'divide-stone-800/80'}`}>
+                      {Object.entries(userProfiles).length > 0 ? (
+                        Object.entries(userProfiles).map(([email, prof]) => (
+                          <tr key={email} className="hover:bg-amber-500/5 transition-colors">
+                            <td className="py-3">
+                              <span className={`font-bold block ${theme === 'light' ? 'text-amber-950' : 'text-white'}`}>{prof.name || email}</span>
+                              <span className={`text-[10px] ${theme === 'light' ? 'text-amber-900/60' : 'text-stone-500'}`}>{email}</span>
+                            </td>
+                            <td className="py-3">
+                              <span className="font-bold text-orange-500">{prof.institute || 'VSIT'}</span>
+                              <span className={`block text-[10px] ${theme === 'light' ? 'text-amber-900/70' : 'text-stone-400'}`}>{prof.department || 'N/A'}</span>
+                            </td>
+                            <td className="py-3">
+                              <span className={`font-semibold block ${theme === 'light' ? 'text-amber-950' : 'text-stone-300'}`}>{prof.contact || 'N/A'}</span>
+                              <span className={`text-[10px] font-mono ${theme === 'light' ? 'text-amber-900/60' : 'text-stone-500'}`}>{prof.employeeId || 'N/A'}</span>
+                            </td>
+                            <td className="py-3 text-right">
+                              <button 
+                                onClick={() => setAdminEditingProfileModal({ ...prof, email })}
+                                className="text-[11px] font-bold px-3 py-1.5 bg-orange-500/10 text-orange-500 border border-orange-500/30 rounded-xl hover:bg-orange-500/20 transition-all inline-flex items-center gap-1"
+                              >
+                                <Edit3 size={12}/> Edit Details
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={4} className="py-4 text-center text-stone-500 font-semibold">
+                            No submitted user profiles yet. Profiles will appear automatically when users log in.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
             </div>
 
             {/* Section 2: Final Approval Stamping Console */}
@@ -2340,6 +2430,126 @@ Your department moderator will review and approve the request, and you will inst
                   <Check size={16}/> Save & Record Modifications
                 </button>
               </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* ====================================================================== */}
+        {/* ADMIN USER PROFILE RECORD EDIT MODAL */}
+        {/* ====================================================================== */}
+        {adminEditingProfileModal && (
+          <div className="fixed inset-0 z-100 bg-stone-950/85 backdrop-blur-md flex items-center justify-center p-4">
+            <div className={`border rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl space-y-6 animate-fade-in-up ${theme === 'light' ? 'bg-amber-50 border-amber-300 text-amber-950' : 'bg-stone-900 border-stone-800 text-white'}`}>
+              
+              <div className="flex items-start justify-between gap-4 border-b border-amber-500/20 pb-4">
+                <div>
+                  <span className="bg-orange-500/20 text-orange-600 px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider mb-2 inline-block">
+                    Admin Profile Record Editor
+                  </span>
+                  <h3 className={`text-xl font-black ${theme === 'light' ? 'text-amber-950' : 'text-white'}`}>
+                    Modify Verified Profile Details
+                  </h3>
+                  <p className={`text-xs mt-1 ${theme === 'light' ? 'text-amber-900/70' : 'text-stone-400'}`}>
+                    Update department, designation, contact, or assigned role for {adminEditingProfileModal.email}.
+                  </p>
+                </div>
+
+                <button onClick={() => setAdminEditingProfileModal(null)} className={`p-2 rounded-xl border ${theme === 'light' ? 'bg-amber-200/80 border-amber-300 text-amber-950' : 'bg-stone-800 border-stone-700 text-stone-300'}`}>
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleAdminUpdateProfileSubmit} className="space-y-4">
+                <div>
+                  <label className={`text-[10px] font-bold uppercase block mb-1 ${theme === 'light' ? 'text-amber-900/70' : 'text-stone-400'}`}>Full Name</label>
+                  <input 
+                    type="text" 
+                    value={adminEditingProfileModal.name || ''} 
+                    onChange={(e) => setAdminEditingProfileModal({ ...adminEditingProfileModal, name: e.target.value })}
+                    className={`w-full p-2.5 rounded-xl text-xs font-bold outline-none border ${theme === 'light' ? 'bg-white border-amber-300 text-amber-950' : 'bg-stone-950 border-stone-700 text-white'}`}
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={`text-[10px] font-bold uppercase block mb-1 ${theme === 'light' ? 'text-amber-900/70' : 'text-stone-400'}`}>Contact Mobile</label>
+                    <input 
+                      type="tel" 
+                      value={adminEditingProfileModal.contact || ''} 
+                      onChange={(e) => setAdminEditingProfileModal({ ...adminEditingProfileModal, contact: e.target.value })}
+                      className={`w-full p-2.5 rounded-xl text-xs font-bold outline-none border ${theme === 'light' ? 'bg-white border-amber-300 text-amber-950' : 'bg-stone-950 border-stone-700 text-white'}`}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className={`text-[10px] font-bold uppercase block mb-1 ${theme === 'light' ? 'text-amber-900/70' : 'text-stone-400'}`}>Institute</label>
+                    <select 
+                      value={adminEditingProfileModal.institute || 'VSIT'} 
+                      onChange={(e) => setAdminEditingProfileModal({ ...adminEditingProfileModal, institute: e.target.value })}
+                      className={`w-full p-2.5 rounded-xl text-xs font-bold outline-none border ${theme === 'light' ? 'bg-white border-amber-300 text-amber-950' : 'bg-stone-950 border-stone-700 text-white'}`}
+                    >
+                      {['VSIT', 'VIT', 'VDT', 'VPT', 'VSB', 'VCP', 'VIIE'].map(inst => (
+                        <option key={inst} value={inst}>{inst}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={`text-[10px] font-bold uppercase block mb-1 ${theme === 'light' ? 'text-amber-900/70' : 'text-stone-400'}`}>Department</label>
+                    <input 
+                      type="text" 
+                      value={adminEditingProfileModal.department || ''} 
+                      onChange={(e) => setAdminEditingProfileModal({ ...adminEditingProfileModal, department: e.target.value })}
+                      className={`w-full p-2.5 rounded-xl text-xs font-bold outline-none border ${theme === 'light' ? 'bg-white border-amber-300 text-amber-950' : 'bg-stone-950 border-stone-700 text-white'}`}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className={`text-[10px] font-bold uppercase block mb-1 ${theme === 'light' ? 'text-amber-900/70' : 'text-stone-400'}`}>Employee ID</label>
+                    <input 
+                      type="text" 
+                      value={adminEditingProfileModal.employeeId || ''} 
+                      onChange={(e) => setAdminEditingProfileModal({ ...adminEditingProfileModal, employeeId: e.target.value })}
+                      className={`w-full p-2.5 rounded-xl text-xs font-bold outline-none border ${theme === 'light' ? 'bg-white border-amber-300 text-amber-950' : 'bg-stone-950 border-stone-700 text-white'}`}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className={`text-[10px] font-bold uppercase block mb-1 ${theme === 'light' ? 'text-amber-900/70' : 'text-stone-400'}`}>Assigned Role</label>
+                  <select 
+                    value={adminEditingProfileModal.role || 'faculty'} 
+                    onChange={(e) => setAdminEditingProfileModal({ ...adminEditingProfileModal, role: e.target.value })}
+                    className={`w-full p-2.5 rounded-xl text-xs font-bold outline-none border ${theme === 'light' ? 'bg-white border-amber-300 text-amber-950' : 'bg-stone-950 border-stone-700 text-white'}`}
+                  >
+                    <option value="admin">Admin (Full System Control)</option>
+                    <option value="moderator">Moderator (Review & Approve)</option>
+                    <option value="faculty">Faculty (Standard Requisition)</option>
+                  </select>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-3 border-t border-amber-500/20">
+                  <button 
+                    type="button" 
+                    onClick={() => setAdminEditingProfileModal(null)}
+                    className={`px-4 py-2.5 rounded-xl text-xs font-bold border ${theme === 'light' ? 'bg-amber-200/80 border-amber-300 text-amber-950' : 'bg-stone-800 border-stone-700 text-stone-300'}`}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider text-white bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/20 flex items-center gap-2"
+                  >
+                    <Check size={16}/> Save & Lock Changes
+                  </button>
+                </div>
+              </form>
 
             </div>
           </div>
