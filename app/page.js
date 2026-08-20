@@ -16,6 +16,7 @@ import moment from 'moment';
 import { generateGatePass } from '@/utils/generatePDF';
 import LoginButton from '@/components/LoginButton';
 import ThemeToggle from '@/components/ThemeToggle';
+import InteractiveCalendarWidget from '@/components/InteractiveCalendarWidget';
 
 const SignatureCanvas = dynamic(() => import('react-signature-canvas'), { ssr: false });
 
@@ -575,7 +576,7 @@ export default function RequisitionPortal() {
     <div className={`min-h-screen font-sans pb-16 selection:bg-amber-500 selection:text-white transition-colors duration-300 ${theme === 'light' ? 'bg-gradient-to-br from-amber-100/90 via-amber-50 to-orange-100/80 text-amber-950' : 'bg-stone-900 text-stone-100'}`}>
       
       {/* --- TOP BRAND HEADER & NAVBAR --- */}
-      <header className="sticky top-0 z-50 glass-nav shadow-2xl">
+      <header className={`sticky top-0 z-50 transition-colors duration-300 shadow-2xl ${theme === 'light' ? 'bg-amber-200/95 backdrop-blur-xl border-b border-amber-300/80 text-amber-950 shadow-amber-500/10' : 'glass-nav text-stone-100'}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-4">
           
           {/* Logo & Company Title */}
@@ -584,21 +585,21 @@ export default function RequisitionPortal() {
               <Building2 size={22} />
             </div>
             <div>
-              <h1 className="text-base sm:text-lg font-black uppercase tracking-tight text-white flex items-center gap-2">
+              <h1 className={`text-base sm:text-lg font-black uppercase tracking-tight flex items-center gap-2 transition-colors ${theme === 'light' ? 'text-amber-950' : 'text-white'}`}>
                 Vidyalankar Dnyanpeeth Trust
               </h1>
-              <div className="flex items-center gap-2 text-[10px] font-bold text-orange-400 uppercase tracking-widest">
+              <div className="flex items-center gap-2 text-[10px] font-bold text-orange-600 uppercase tracking-widest">
                 <span>V - Booking Requisition Portal</span>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
               </div>
             </div>
           </div>
 
           {/* User Role Switcher, Dark Mode Toggle & Azure OAuth Login */}
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="hidden md:flex items-center gap-1.5 bg-stone-950/80 px-3 py-1.5 rounded-xl border border-stone-800 text-xs font-bold text-stone-300">
-              <span className="text-[10px] text-stone-500 uppercase tracking-wider">Role:</span>
-              <span className={`px-2 py-0.5 rounded-lg text-[10px] uppercase tracking-widest ${userRole === 'admin' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : userRole === 'moderator' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'}`}>
+            <div className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors ${theme === 'light' ? 'bg-amber-100/90 border-amber-300 text-amber-950' : 'bg-stone-950/80 border-stone-800 text-stone-300'}`}>
+              <span className={`text-[10px] uppercase tracking-wider ${theme === 'light' ? 'text-amber-900/60' : 'text-stone-500'}`}>Role:</span>
+              <span className={`px-2 py-0.5 rounded-lg text-[10px] uppercase tracking-widest ${userRole === 'admin' ? 'bg-emerald-500/20 text-emerald-600 border border-emerald-500/30' : userRole === 'moderator' ? 'bg-blue-500/20 text-blue-600 border border-blue-500/30' : 'bg-orange-500/20 text-orange-600 border border-orange-500/30'}`}>
                 {userRole.toUpperCase()}
               </span>
             </div>
@@ -609,13 +610,13 @@ export default function RequisitionPortal() {
         </div>
 
         {/* --- NAVIGATION TABS BAR --- */}
-        <div className="border-t border-stone-800/80 bg-stone-950/90 overflow-x-auto hide-scrollbar">
+        <div className={`border-t transition-colors overflow-x-auto hide-scrollbar ${theme === 'light' ? 'border-amber-300/80 bg-amber-100/95' : 'border-stone-800/80 bg-stone-950/90'}`}>
           <div className="max-w-7xl mx-auto px-4 flex items-center gap-1 sm:gap-2 py-1.5 text-xs font-bold">
             
             {/* 1. GENERAL PUBLIC LANDING CALENDAR */}
             <button 
               onClick={() => setActiveTab('landing-calendar')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all shrink-0 ${activeTab === 'landing-calendar' ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30' : 'text-stone-400 hover:text-white hover:bg-stone-900'}`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all shrink-0 ${activeTab === 'landing-calendar' ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30' : (theme === 'light' ? 'text-amber-950 hover:bg-amber-300/80' : 'text-stone-400 hover:text-white hover:bg-stone-900')}`}
             >
               <Calendar size={15}/> <span>Public Events Calendar</span>
             </button>
@@ -623,7 +624,7 @@ export default function RequisitionPortal() {
             {/* 2. DIRECT BOOK VENUE */}
             <button 
               onClick={() => setActiveTab('book')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all shrink-0 ${activeTab === 'book' ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30' : 'text-stone-400 hover:text-white hover:bg-stone-900'}`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all shrink-0 ${activeTab === 'book' ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30' : (theme === 'light' ? 'text-amber-950 hover:bg-amber-300/80' : 'text-stone-400 hover:text-white hover:bg-stone-900')}`}
             >
               <PenTool size={15}/> <span>Book Venue</span>
             </button>
@@ -631,7 +632,7 @@ export default function RequisitionPortal() {
             {/* 3. SPECIFIC REQUIREMENTS */}
             <button 
               onClick={() => setActiveTab('requirements')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all shrink-0 ${activeTab === 'requirements' ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30' : 'text-stone-400 hover:text-white hover:bg-stone-900'}`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all shrink-0 ${activeTab === 'requirements' ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30' : (theme === 'light' ? 'text-amber-950 hover:bg-amber-300/80' : 'text-stone-400 hover:text-white hover:bg-stone-900')}`}
             >
               <CheckSquare size={15}/> <span>Specific Requirements</span>
             </button>
@@ -639,7 +640,7 @@ export default function RequisitionPortal() {
             {/* 4. ANALYTICS & DEMAND INSIGHTS */}
             <button 
               onClick={() => setActiveTab('analytics')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all shrink-0 ${activeTab === 'analytics' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-stone-400 hover:text-white hover:bg-stone-900'}`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all shrink-0 ${activeTab === 'analytics' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : (theme === 'light' ? 'text-amber-950 hover:bg-amber-300/80' : 'text-stone-400 hover:text-white hover:bg-stone-900')}`}
             >
               <BarChart3 size={15}/> <span>Demand Analytics</span>
             </button>
@@ -647,7 +648,7 @@ export default function RequisitionPortal() {
             {/* 5. AI VENUE ASSISTANT CHATBOT */}
             <button 
               onClick={() => setActiveTab('chatbot')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all shrink-0 ${activeTab === 'chatbot' ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30' : 'text-stone-400 hover:text-white hover:bg-stone-900'}`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all shrink-0 ${activeTab === 'chatbot' ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30' : (theme === 'light' ? 'text-amber-950 hover:bg-amber-300/80' : 'text-stone-400 hover:text-white hover:bg-stone-900')}`}
             >
               <Bot size={15}/> <span>AI Assistant</span>
             </button>
@@ -656,7 +657,7 @@ export default function RequisitionPortal() {
             {(userRole === 'moderator' || userRole === 'admin') && (
               <button 
                 onClick={() => setActiveTab('moderator')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all shrink-0 ${activeTab === 'moderator' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'text-stone-400 hover:text-white hover:bg-stone-900'}`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all shrink-0 ${activeTab === 'moderator' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : (theme === 'light' ? 'text-amber-950 hover:bg-amber-300/80' : 'text-stone-400 hover:text-white hover:bg-stone-900')}`}
               >
                 <UserCheck size={15}/> 
                 <span>Moderator Review</span>
@@ -672,7 +673,7 @@ export default function RequisitionPortal() {
             {userRole === 'admin' && (
               <button 
                 onClick={() => setActiveTab('admin')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all shrink-0 ${activeTab === 'admin' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30' : 'text-stone-400 hover:text-white hover:bg-stone-900'}`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all shrink-0 ${activeTab === 'admin' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30' : (theme === 'light' ? 'text-amber-950 hover:bg-amber-300/80' : 'text-stone-400 hover:text-white hover:bg-stone-900')}`}
               >
                 <ShieldCheck size={15}/> 
                 <span>Admin & Venue Manager</span>
@@ -687,7 +688,7 @@ export default function RequisitionPortal() {
             {/* 8. MY REQUISITIONS */}
             <button 
               onClick={() => setActiveTab('my-bookings')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all shrink-0 ${activeTab === 'my-bookings' ? 'bg-stone-800 text-orange-400 border border-orange-500/30' : 'text-stone-400 hover:text-white hover:bg-stone-900'}`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all shrink-0 ${activeTab === 'my-bookings' ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/30' : (theme === 'light' ? 'text-amber-950 hover:bg-amber-300/80' : 'text-stone-400 hover:text-white hover:bg-stone-900')}`}
             >
               <FileText size={15}/> <span>My Requisitions</span>
             </button>
@@ -805,7 +806,15 @@ export default function RequisitionPortal() {
               </div>
             </div>
 
-            {/* BENTO GRID ROW 2: Filterable Approved Campus Calendar & Events Agenda */}
+            {/* BENTO GRID ROW 2: INTERACTIVE CALENDAR WIDGET (MATCHING IMAGE 2 REFERENCE UI) */}
+            <InteractiveCalendarWidget 
+              approvedBookings={approvedBookings} 
+              theme={theme} 
+              formatIST={formatIST} 
+              getYouTubeThumbnail={getYouTubeThumbnail} 
+            />
+
+            {/* BENTO GRID ROW 3: Filterable Approved Campus Calendar & Events Agenda */}
             <div className={`rounded-3xl p-6 sm:p-8 shadow-xl border ${theme === 'light' ? 'bg-amber-100/90 border-amber-300' : 'bg-stone-950/90 border-stone-800'}`}>
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                 <div>
