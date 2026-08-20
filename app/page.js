@@ -91,6 +91,7 @@ const INITIAL_MOCK_BOOKINGS = [
     attendees: "250 Students / 20 Others",
     external_participants: "Tech Mahindra External Judges",
     status: "approved",
+    youtube_live_url: "https://www.youtube.com/watch?v=5qap5aO4i9A",
     moderator_name: "Prof. S. Sharma",
     moderator_notes: "Reviewed and verified venue availability.",
     approved_at: moment().subtract(2, 'hours').toISOString(),
@@ -99,7 +100,8 @@ const INITIAL_MOCK_BOOKINGS = [
         "Sound System & Microphones": "2 Wireless Mics + Collar Mic",
         "HD Projector & Screen": "Yes",
         "Stage Design & VIP Chairs": "6 VIP Chairs on stage",
-        "Catering & High Tea Arrangement": "Tea & Snacks for 30 VIP guests"
+        "Catering & High Tea Arrangement": "Tea & Snacks for 30 VIP guests",
+        "Live Streaming Setup": "Pre-scheduled YouTube Broadcast"
       }
     }
   },
@@ -114,7 +116,8 @@ const INITIAL_MOCK_BOOKINGS = [
     end_time: moment().add(3, 'days').hours(16).minutes(30).toISOString(),
     attendees: "180 Students / 10 Faculty",
     external_participants: "IIT Bombay Alumni Instructors",
-    status: "pending_admin",
+    status: "approved",
+    youtube_live_url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
     moderator_name: "Prof. S. Sharma",
     moderator_notes: "Approved by Moderator. Checked electrical load requirements.",
     items: {
@@ -257,6 +260,21 @@ export default function RequisitionPortal() {
 
   const toggleVenue = (venueName) => {
     setSelectedVenues(prev => prev.includes(venueName) ? prev.filter(v => v !== venueName) : [...prev, venueName]);
+  };
+
+  const getYouTubeThumbnail = (url) => {
+    if (!url) return 'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?w=600&auto=format&fit=crop&q=80';
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = url.match(regExp);
+    if (match && match[2] && match[2].length === 11) {
+      return `https://img.youtube.com/vi/${match[2]}/hqdefault.jpg`;
+    }
+    return 'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?w=600&auto=format&fit=crop&q=80';
+  };
+
+  const formatIST = (dateString, format = 'DD MMM YYYY, hh:mm A') => {
+    if (!dateString) return 'N/A';
+    return moment(dateString).utcOffset('+05:30').format(format);
   };
 
   const handleLogout = () => {
@@ -414,6 +432,7 @@ export default function RequisitionPortal() {
       end_time: endTimeISO,
       attendees: `${data.attendeesStudent || 0} Students / ${data.attendeesOther || 0} Others`,
       external_participants: data.isExternal ? (data.externalDetails || "Yes") : "No",
+      youtube_live_url: data.youtube_live_url || null,
       items: { requirements: requirementsDetails },
       signature_url: facultySignature,
       status: 'pending',
@@ -683,124 +702,185 @@ export default function RequisitionPortal() {
         {/* TAB 1: GENERAL PUBLIC LANDING EVENTS CALENDAR */}
         {/* ====================================================================== */}
         {activeTab === 'landing-calendar' && (
-          <div className="animate-fade-in-up space-y-6 max-w-6xl mx-auto">
+          <div className="animate-fade-in-up space-y-6 max-w-7xl mx-auto">
             
-            {/* Hero Landing Banner */}
-            <div className="glass-orange rounded-3xl p-6 sm:p-10 text-stone-900 shadow-3d relative overflow-hidden flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-              <div className="space-y-2 max-w-2xl">
-                <span className="bg-orange-600 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full inline-block">
-                  Vidyalankar Dnyanpeeth Trust Central Portal
-                </span>
-                <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-amber-950">
-                  Campus Events & Approved Venue Calendar
-                </h2>
-                <p className="text-xs sm:text-sm font-semibold text-amber-900 leading-relaxed">
-                  Welcome to the public events calendar. View all scheduled seminars, tech workshops, cultural summits, and academic gatherings across VDT, VSIT, VIT, VPT, VSB, VCP, and VIIE campus venues.
-                </p>
-              </div>
+            {/* BENTO GRID ROW 1: Hero Banner + 🔴 Live Broadcasts Panel */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              
+              {/* 1. Hero Bento Card (2 Cols) */}
+              <div className={`lg:col-span-2 rounded-3xl p-6 sm:p-10 shadow-3d relative overflow-hidden flex flex-col justify-between transition-colors border ${theme === 'light' ? 'bg-gradient-to-br from-amber-200 via-amber-100 to-orange-200 border-amber-300 text-amber-950' : 'bg-gradient-to-br from-stone-900 via-stone-900 to-orange-950/40 border-stone-800 text-white'}`}>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="bg-gradient-to-r from-orange-500 to-amber-500 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full shadow-md">
+                      Vidyalankar Dnyanpeeth Trust
+                    </span>
+                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border ${theme === 'light' ? 'bg-amber-300/60 border-amber-400 text-amber-950' : 'bg-stone-800 border-stone-700 text-stone-300'}`}>
+                      Central Requisition Portal
+                    </span>
+                  </div>
 
-              <div className="flex flex-col sm:flex-row gap-3 shrink-0">
-                <button onClick={() => setActiveTab('book')} className="bg-stone-900 text-white font-bold text-xs px-6 py-3.5 rounded-2xl hover:bg-black transition-all flex items-center gap-2 shadow-xl">
-                  <PenTool size={16}/> Direct Book Venue
-                </button>
-                <button onClick={() => setActiveTab('chatbot')} className="bg-amber-400 text-amber-950 font-bold text-xs px-6 py-3.5 rounded-2xl hover:bg-amber-300 transition-all flex items-center gap-2 shadow-md">
-                  <Bot size={16}/> Ask AI Chatbot
-                </button>
-              </div>
-            </div>
+                  <h2 className={`text-2xl sm:text-4xl font-black uppercase tracking-tight leading-tight ${theme === 'light' ? 'text-amber-950' : 'text-white'}`}>
+                    Campus Events & Live Broadcast Hub
+                  </h2>
 
-            {/* Filter Controls Bar */}
-            <div className="bg-stone-950/80 border border-stone-800 rounded-3xl p-6 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div>
-                <h3 className="text-base font-black text-white uppercase tracking-tight flex items-center gap-2">
-                  <Calendar className="text-orange-400" size={20}/> Approved Campus Schedule
-                </h3>
-                <p className="text-xs text-stone-400">Total Approved Events: <strong className="text-white">{approvedBookings.length}</strong></p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-                <div className="relative flex-1 md:w-64">
-                  <Search size={14} className="absolute left-3 top-3.5 text-stone-500" />
-                  <input 
-                    type="text" 
-                    value={calendarSearch} 
-                    onChange={(e) => setCalendarSearch(e.target.value)} 
-                    placeholder="Search by event or venue name..." 
-                    className="w-full pl-9 pr-4 py-2.5 bg-stone-900 border border-stone-800 rounded-xl text-xs text-white outline-none focus:border-orange-500" 
-                  />
+                  <p className={`text-xs sm:text-sm font-semibold leading-relaxed max-w-xl ${theme === 'light' ? 'text-amber-900/90' : 'text-stone-300'}`}>
+                    View scheduled seminars, tech workshops, cultural summits, and watch pre-scheduled YouTube live broadcasts across VDT, VSIT, VIT, VPT, VSB, VCP, and VIIE campus venues.
+                  </p>
                 </div>
 
-                <select 
-                  value={calendarInstituteFilter} 
-                  onChange={(e) => setCalendarInstituteFilter(e.target.value)} 
-                  className="bg-stone-900 border border-stone-800 px-3.5 py-2.5 rounded-xl text-xs font-bold text-stone-200 outline-none"
-                >
-                  <option value="ALL">All Institutes</option>
-                  {INSTITUTES.map(inst => <option key={inst} value={inst}>{inst}</option>)}
-                </select>
+                {/* Quick Action Badges & Buttons */}
+                <div className="mt-8 pt-6 border-t border-amber-500/20 flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex items-center gap-2 flex-wrap text-xs font-bold">
+                    <span className="bg-amber-500/20 text-amber-600 px-3 py-1.5 rounded-xl border border-amber-500/30">32+ Campus Venues</span>
+                    <span className="bg-emerald-500/20 text-emerald-600 px-3 py-1.5 rounded-xl border border-emerald-500/30">2-Tier Security Clearance</span>
+                    <span className="bg-blue-500/20 text-blue-600 px-3 py-1.5 rounded-xl border border-blue-500/30">Live YouTube Streams</span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => setActiveTab('book')} className="bg-gradient-to-r from-orange-500 to-amber-500 text-white font-black text-xs px-6 py-3.5 rounded-2xl hover:from-orange-600 hover:to-amber-600 transition-all shadow-xl flex items-center gap-2">
+                      <PenTool size={16}/> Direct Book Venue
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. 🔴 LIVE BROADCASTS & STREAMING PANEL (1 Col) */}
+              <div className={`rounded-3xl p-6 shadow-xl border flex flex-col justify-between ${theme === 'light' ? 'bg-amber-100/90 border-amber-300 text-amber-950' : 'bg-stone-950/90 border-stone-800 text-white'}`}>
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className={`text-base font-black uppercase tracking-tight flex items-center gap-2 ${theme === 'light' ? 'text-amber-950' : 'text-white'}`}>
+                      <Video className="text-red-500 animate-pulse" size={18}/> Live Broadcasts
+                    </h3>
+                    <span className="bg-red-500/20 text-red-500 text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border border-red-500/30 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span> 🔴 LIVE & UPCOMING
+                    </span>
+                  </div>
+
+                  {/* List of Live / Pre-scheduled YouTube Streams */}
+                  <div className="space-y-4 max-h-[340px] overflow-y-auto custom-scrollbar pr-1">
+                    {bookings.filter(b => b.youtube_live_url || b.items?.requirements?.["Live Streaming Setup"] || b.items?.requirements?.["4K Video Recording"]).length > 0 ? (
+                      bookings
+                        .filter(b => b.youtube_live_url || b.items?.requirements?.["Live Streaming Setup"] || b.items?.requirements?.["4K Video Recording"])
+                        .map(b => {
+                          const thumb = getYouTubeThumbnail(b.youtube_live_url);
+                          return (
+                            <div key={b.id} className={`p-3 rounded-2xl border transition-all hover:scale-[1.02] ${theme === 'light' ? 'bg-amber-50/90 border-amber-300' : 'bg-stone-900/80 border-stone-800'}`}>
+                              <div className="relative aspect-video rounded-xl overflow-hidden mb-2.5 group">
+                                <img src={thumb} alt={b.event_name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                  <span className="bg-red-600 text-white p-2.5 rounded-full shadow-lg group-hover:scale-110 transition-transform">
+                                    <Video size={16}/>
+                                  </span>
+                                </div>
+                                <span className="absolute top-2 left-2 bg-red-600 text-white text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider shadow">
+                                  🔴 LIVE STREAM
+                                </span>
+                                <span className="absolute bottom-2 right-2 bg-stone-950/80 text-white text-[9px] font-bold px-2 py-0.5 rounded-md">
+                                  {b.institute}
+                                </span>
+                              </div>
+
+                              <h4 className={`text-xs font-black line-clamp-1 mb-1 ${theme === 'light' ? 'text-amber-950' : 'text-white'}`}>{b.event_name}</h4>
+                              <p className="text-[10px] text-stone-400 font-semibold mb-2">{b.venue}</p>
+
+                              <a 
+                                href={b.youtube_live_url || "https://youtube.com"} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="w-full py-2 rounded-xl text-[11px] font-black text-white bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 transition-all flex items-center justify-center gap-1.5 shadow-md"
+                              >
+                                Watch on YouTube ↗
+                              </a>
+                            </div>
+                          );
+                        })
+                    ) : (
+                      <div className="p-6 text-center text-xs text-stone-400 border border-dashed border-stone-700/60 rounded-2xl">
+                        <Video size={24} className="mx-auto mb-2 opacity-50 text-stone-500"/>
+                        No active streams right now. When live stream options are selected in venue requisitions, they will automatically broadcast here.
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Calendar Events Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {approvedBookings
-                .filter(b => {
-                  const matchesSearch = b.event_name?.toLowerCase().includes(calendarSearch.toLowerCase()) || b.venue?.toLowerCase().includes(calendarSearch.toLowerCase());
-                  const matchesInst = calendarInstituteFilter === 'ALL' || b.institute === calendarInstituteFilter;
-                  return matchesSearch && matchesInst;
-                })
-                .map((event) => {
-                  const venueObj = venues.find(v => v.name === event.venue || event.venue.includes(v.name));
-                  return (
-                    <div 
-                      key={event.id} 
-                      onClick={() => setSelectedEventModal(event)}
-                      className="bg-stone-950/80 border border-stone-800 hover:border-orange-500/50 rounded-3xl p-6 shadow-xl cursor-pointer hover:-translate-y-1 transition-all group relative overflow-hidden"
-                    >
-                      <div className="flex items-center justify-between gap-2 mb-3">
-                        <span className="bg-orange-500/20 text-orange-400 border border-orange-500/30 px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider">
-                          {event.institute || 'VDT'}
-                        </span>
-                        <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2.5 py-0.5 rounded-lg text-[9px] font-bold uppercase tracking-wider flex items-center gap-1">
-                          <CheckCircle2 size={10}/> Approved & Sealed
-                        </span>
-                      </div>
+            {/* BENTO GRID ROW 2: Filterable Approved Campus Calendar & Events Agenda */}
+            <div className={`rounded-3xl p-6 sm:p-8 shadow-xl border ${theme === 'light' ? 'bg-amber-100/90 border-amber-300' : 'bg-stone-950/90 border-stone-800'}`}>
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                <div>
+                  <h3 className={`text-xl font-black uppercase tracking-tight flex items-center gap-2 ${theme === 'light' ? 'text-amber-950' : 'text-white'}`}>
+                    <Calendar className="text-orange-500" size={22}/> Public Approved Events Schedule
+                  </h3>
+                  <p className={`text-xs font-semibold ${theme === 'light' ? 'text-amber-900/80' : 'text-stone-400'}`}>Total Approved Events: <strong className={theme === 'light' ? 'text-amber-950' : 'text-white'}>{approvedBookings.length}</strong></p>
+                </div>
 
-                      <h3 className="text-base font-black text-white group-hover:text-orange-400 transition-colors leading-tight mb-3">
-                        {event.event_name}
-                      </h3>
+                {/* Search & Institute Filter */}
+                <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                  <div className="relative flex-1 md:w-64">
+                    <Search size={14} className="absolute left-3 top-3.5 text-stone-500" />
+                    <input 
+                      type="text" 
+                      value={calendarSearch} 
+                      onChange={(e) => setCalendarSearch(e.target.value)} 
+                      placeholder="Search event or venue..." 
+                      className={`w-full pl-9 pr-4 py-2.5 rounded-xl text-xs outline-none transition-colors border ${theme === 'light' ? 'bg-amber-50 border-amber-300 text-amber-950 focus:border-amber-500' : 'bg-stone-900 border-stone-800 text-white focus:border-orange-500'}`} 
+                    />
+                  </div>
 
-                      <div className="space-y-2 text-xs text-stone-400 font-medium">
-                        <div className="flex items-center gap-2">
-                          <MapPin size={14} className="text-orange-400 shrink-0"/>
-                          <span className="truncate">{event.venue}</span>
+                  <select 
+                    value={calendarInstituteFilter} 
+                    onChange={(e) => setCalendarInstituteFilter(e.target.value)} 
+                    className={`px-3.5 py-2.5 rounded-xl text-xs font-bold outline-none border ${theme === 'light' ? 'bg-amber-50 border-amber-300 text-amber-950' : 'bg-stone-900 border-stone-800 text-stone-200'}`}
+                  >
+                    <option value="ALL">All Institutes</option>
+                    {INSTITUTES.map(inst => <option key={inst} value={inst}>{inst}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Events Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {approvedBookings
+                  .filter(b => {
+                    const matchesSearch = b.event_name?.toLowerCase().includes(calendarSearch.toLowerCase()) || b.venue?.toLowerCase().includes(calendarSearch.toLowerCase());
+                    const matchesInst = calendarInstituteFilter === 'ALL' || b.institute === calendarInstituteFilter;
+                    return matchesSearch && matchesInst;
+                  })
+                  .map((booking) => (
+                    <div key={booking.id} className={`p-5 rounded-2xl border transition-all hover:scale-[1.01] flex flex-col justify-between gap-4 ${theme === 'light' ? 'bg-amber-50/90 border-amber-300 shadow-md' : 'bg-stone-900/80 border-stone-800'}`}>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="bg-orange-500/20 text-orange-600 text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border border-orange-500/30">
+                            {booking.institute}
+                          </span>
+                          <span className="bg-emerald-500/20 text-emerald-600 text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border border-emerald-500/30 flex items-center gap-1">
+                            <CheckCircle2 size={12}/> Approved
+                          </span>
                         </div>
 
-                        {venueObj && (
-                          <div className="flex items-center gap-2 text-stone-400 text-[11px]">
-                            <Users size={13} className="text-amber-400 shrink-0"/>
-                            <span>Seating Capacity: <strong className="text-white">{venueObj.capacity} seats</strong></span>
-                          </div>
-                        )}
-
-                        <div className="flex items-center gap-2">
-                          <Calendar size={14} className="text-blue-400 shrink-0"/>
-                          <span>{moment(event.start_time).format('D MMM YYYY')}</span>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <Clock size={14} className="text-amber-400 shrink-0"/>
-                          <span>{moment(event.start_time).format('hh:mm A')} - {moment(event.end_time).format('hh:mm A')}</span>
-                        </div>
+                        <h4 className={`text-base font-black leading-snug ${theme === 'light' ? 'text-amber-950' : 'text-white'}`}>{booking.event_name}</h4>
+                        <p className={`text-xs font-semibold flex items-center gap-1.5 ${theme === 'light' ? 'text-amber-900/80' : 'text-stone-400'}`}>
+                          <MapPin size={14} className="text-orange-500 shrink-0"/> {booking.venue}
+                        </p>
+                        <p className={`text-xs font-medium flex items-center gap-1.5 ${theme === 'light' ? 'text-amber-900/70' : 'text-stone-400'}`}>
+                          <Clock size={14} className="text-amber-500 shrink-0"/> {formatIST(booking.start_time)}
+                        </p>
                       </div>
 
-                      <div className="mt-4 pt-3 border-t border-stone-800 flex items-center justify-between text-[11px] font-bold text-stone-400 group-hover:text-orange-400">
-                        <span>Coordinator: {event.coordinator}</span>
-                        <ChevronRight size={16}/>
-                      </div>
+                      {booking.youtube_live_url && (
+                        <a 
+                          href={booking.youtube_live_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="w-full py-2.5 rounded-xl text-xs font-black text-white bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 transition-all flex items-center justify-center gap-2 shadow-md"
+                        >
+                          <Video size={14}/> Watch Pre-Scheduled YouTube Stream ↗
+                        </a>
+                      )}
                     </div>
-                  );
-                })}
+                  ))}
+              </div>
             </div>
           </div>
         )}
@@ -974,6 +1054,20 @@ export default function RequisitionPortal() {
 
                         {req.hasDetails && isChecked && (
                           <input {...register(`details_${req.id}`)} placeholder="Specify details..." className="w-full mt-3 bg-stone-950 border border-orange-500/40 p-2.5 rounded-xl text-xs outline-none text-white placeholder-stone-500 focus:border-orange-400 transition-colors" />
+                        )}
+
+                        {(req.id === 'liveStream' || req.id === 'videoRec') && isChecked && (
+                          <div className="mt-3 pt-2.5 border-t border-orange-500/30">
+                            <label className="text-[10px] font-black text-orange-400 uppercase tracking-widest block mb-1 flex items-center gap-1">
+                              <Video size={12}/> Pre-Scheduled YouTube Broadcast Link
+                            </label>
+                            <input 
+                              type="url" 
+                              {...register("youtube_live_url")} 
+                              placeholder="https://youtube.com/watch?v=... or https://youtu.be/..." 
+                              className="w-full bg-stone-950 border border-orange-500/50 p-2 rounded-xl text-xs outline-none text-white placeholder-stone-500 focus:border-orange-400 transition-colors" 
+                            />
+                          </div>
                         )}
                       </div>
                     );
