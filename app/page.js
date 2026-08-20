@@ -553,7 +553,7 @@ export default function RequisitionPortal() {
   const pendingAdminBookings = bookings.filter(b => b.status === 'pending_admin');
 
   return (
-    <div className={`min-h-screen font-sans pb-16 selection:bg-orange-500 selection:text-white transition-colors duration-300 ${theme === 'light' ? 'bg-amber-50/50 text-stone-900' : 'bg-stone-900 text-stone-100'}`}>
+    <div className={`min-h-screen font-sans pb-16 selection:bg-amber-500 selection:text-white transition-colors duration-300 ${theme === 'light' ? 'bg-gradient-to-br from-amber-100/90 via-amber-50 to-orange-100/80 text-amber-950' : 'bg-stone-900 text-stone-100'}`}>
       
       {/* --- TOP BRAND HEADER & NAVBAR --- */}
       <header className="sticky top-0 z-50 glass-nav shadow-2xl">
