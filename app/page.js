@@ -15,6 +15,7 @@ import {
 import moment from 'moment';
 import { generateGatePass } from '@/utils/generatePDF';
 import LoginButton from '@/components/LoginButton';
+import ThemeToggle from '@/components/ThemeToggle';
 
 const SignatureCanvas = dynamic(() => import('react-signature-canvas'), { ssr: false });
 
@@ -198,9 +199,12 @@ export default function RequisitionPortal() {
   const [adminStatusInput, setAdminStatusInput] = useState("Available");
   const [adminNewTechInput, setAdminNewTechInput] = useState('');
 
+  // Theme State
+  const [theme, setTheme] = useState('dark');
+
   // AI Chatbot State
   const [chatMessages, setChatMessages] = useState([
-    { sender: 'bot', text: 'Hello! I am the Vidyalankar Dnyanpeeth Trust AI Venue Assistant. Ask me anything like "Can 200 people seat in auditorium?" or "Which hall has seating for 150 people?"' }
+    { sender: 'bot', text: '👋 Hello! I am the Vidyalankar Dnyanpeeth Trust AI Venue Assistant.\n\nAsk me anything like:\n• "Can 200 people seat in auditorium?"\n• "Which halls seat 150 people?"\n• "Which venues have Laser Projector and AC?"\n• "How does the 2-Tier approval process work?"' }
   ]);
   const [chatInput, setChatInput] = useState('');
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -221,6 +225,18 @@ export default function RequisitionPortal() {
     const savedRole = localStorage.getItem('userRole') || 'faculty';
     setUserRole(savedRole);
     fetchBookingsFromDatabase();
+
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    setTheme(savedTheme);
+    if (typeof document !== 'undefined') {
+      if (savedTheme === 'light') {
+        document.documentElement.classList.add('light-mode');
+        document.documentElement.classList.remove('dark-mode');
+      } else {
+        document.documentElement.classList.add('dark-mode');
+        document.documentElement.classList.remove('light-mode');
+      }
+    }
   }, []);
 
   const fetchBookingsFromDatabase = async () => {
@@ -248,7 +264,7 @@ export default function RequisitionPortal() {
     window.location.reload();
   };
 
-  // --- AI CHATBOT LOGIC ---
+  // --- EXPANDED HIGH-CONTEXT AI CHATBOT LOGIC ---
   const handleSendChatMessage = (textToSend = chatInput) => {
     const query = (textToSend || '').trim();
     if (!query) return;
@@ -257,46 +273,85 @@ export default function RequisitionPortal() {
     setChatMessages(newMessages);
     setChatInput('');
 
-    // Generate intelligent AI response based on capacity and tech specs
     setTimeout(() => {
       let reply = "";
       const lowerQuery = query.toLowerCase();
 
-      // Check capacity questions e.g. "Can 200 people seat in auditorium?"
+      // Extract numbers in query for capacity checks
       const numberMatch = lowerQuery.match(/(\d+)/);
       const requestedCapacity = numberMatch ? parseInt(numberMatch[0]) : null;
 
-      // Find venue in query
-      const matchedVenue = venues.find(v => lowerQuery.includes(v.name.toLowerCase()) || (v.name === 'Auditorium' && lowerQuery.includes('auditorium')) || (v.name.includes('Board Room') && lowerQuery.includes('board room')));
+      // Find venue matching query
+      const matchedVenue = venues.find(v => 
+        lowerQuery.includes(v.name.toLowerCase()) || 
+        (v.name === 'Auditorium' && lowerQuery.includes('auditorium')) || 
+        (v.name.includes('Board Room') && (lowerQuery.includes('board room') || lowerQuery.includes('boardroom'))) ||
+        (v.name.includes('Amphitheatre') && (lowerQuery.includes('amphi') || lowerQuery.includes('amphitheatre'))) ||
+        (v.name.includes('Playground') && (lowerQuery.includes('ground') || lowerQuery.includes('playground')))
+      );
 
+      // 1. Capacity + Specific Venue Query (e.g. "Can 200 people seat in Auditorium?")
       if (matchedVenue && requestedCapacity !== null) {
         if (requestedCapacity <= matchedVenue.capacity) {
-          reply = `✅ Yes! The ${matchedVenue.name} has a seating capacity of ${matchedVenue.capacity} people (you asked for ${requestedCapacity}). Installed Tech: ${matchedVenue.tech.join(', ')}.`;
+          reply = `✅ **Yes!** ${matchedVenue.name} can accommodate **${requestedCapacity} people**.\n\n• **Seating Capacity:** ${matchedVenue.capacity} seats\n• **Status:** ${matchedVenue.status}\n• **Installed AV & Tech:** ${matchedVenue.tech.join(', ')}`;
         } else {
-          const suitableVenues = venues.filter(v => v.capacity >= requestedCapacity);
-          const suitableList = suitableVenues.slice(0, 3).map(v => `${v.name} (${v.capacity} seats)`).join(', ');
-          reply = `⚠️ No. The ${matchedVenue.name} only seats ${matchedVenue.capacity} people (you requested ${requestedCapacity}). For ${requestedCapacity}+ people, we recommend: ${suitableList || 'VIT Amphitheatre or Playground 1'}.`;
+          const suitableVenues = venues.filter(v => v.capacity >= requestedCapacity).sort((a,b) => a.capacity - b.capacity);
+          const suitableList = suitableVenues.slice(0, 4).map(v => `• **${v.name}**: ${v.capacity} seats (${v.tech.slice(0, 2).join(', ')})`).join('\n');
+          reply = `⚠️ **Capacity Warning:** ${matchedVenue.name} seats up to **${matchedVenue.capacity} people**, which is less than your requested **${requestedCapacity} people**.\n\n**Recommended Alternatives for ${requestedCapacity}+ Guests:**\n${suitableList || '• **Playground 1**: 1000 capacity\n• **VIT Amphitheatre**: 500 capacity'}`;
         }
-      } else if (requestedCapacity !== null && (lowerQuery.includes('seat') || lowerQuery.includes('capacity') || lowerQuery.includes('people') || lowerQuery.includes('hall'))) {
+      }
+      // 2. Capacity-Only Search (e.g. "Which halls seat 150 people?")
+      else if (requestedCapacity !== null && (lowerQuery.includes('seat') || lowerQuery.includes('capacity') || lowerQuery.includes('people') || lowerQuery.includes('student') || lowerQuery.includes('hall') || lowerQuery.includes('room') || lowerQuery.includes('venue') || lowerQuery.includes('fit') || lowerQuery.includes('hold'))) {
         const fittingVenues = venues.filter(v => v.capacity >= requestedCapacity).sort((a,b) => a.capacity - b.capacity);
         if (fittingVenues.length > 0) {
-          const options = fittingVenues.slice(0, 4).map(v => `• ${v.name}: ${v.capacity} seating capacity (${v.tech.slice(0, 2).join(', ')})`).join('\n');
-          reply = `Here are campus venues with seating capacity for ${requestedCapacity}+ people:\n${options}`;
+          const options = fittingVenues.slice(0, 5).map(v => `• **${v.name}**: ${v.capacity} seating capacity | Tech: ${v.tech.slice(0, 2).join(', ')}`).join('\n');
+          reply = `🏛️ **Campus Venues for ${requestedCapacity}+ People:**\n\n${options}\n\n*Tip: Click the "Book Venue" tab to initiate a requisition for any of these spaces.*`;
         } else {
-          reply = `For ${requestedCapacity}+ people, we recommend Playground 1 (1000 capacity) or Playground 2 (800 capacity).`;
+          reply = `🏟️ For large gatherings of **${requestedCapacity}+ people**, we recommend:\n\n• **Playground 1**: 1,000 capacity (Full Sports Ground, Flood Lights, Generator Power)\n• **Playground 2**: 800 capacity\n• **Parking Area**: 600 capacity\n• **VIT Amphitheatre**: 500 capacity`;
         }
-      } else if (matchedVenue) {
-        reply = `ℹ️ ${matchedVenue.name} details:\n• Seating Capacity: ${matchedVenue.capacity} seats\n• Tech & AV Specs: ${matchedVenue.tech.join(', ')}\n• Status: ${matchedVenue.status}`;
-      } else if (lowerQuery.includes('tech') || lowerQuery.includes('equipment') || lowerQuery.includes('projector')) {
-        reply = `Campus venues come equipped with HD/Laser Projectors, Line Array Speakers, Wireless Mics, Stage Lights, and 4K Live Streaming setups. Visit the "Specific Requirements" tab to view full technical catalogs.`;
-      } else if (lowerQuery.includes('book') || lowerQuery.includes('how')) {
-        reply = `To book a venue: Click on the "Book Venue" tab, select your institute, schedule time, choose your venue with seating capacity, pick specific logistics requirements, draw your signature, and submit!`;
-      } else {
-        reply = `I can help you check seating capacity and tech specs for any Vidyalankar Dnyanpeeth Trust campus venue! Try asking:\n• "Can 200 people seat in auditorium?"\n• "Which halls seat 150 people?"\n• "What tech is in Board Room 7th Floor?"`;
+      }
+      // 3. Tech Equipment & Feature Filter (e.g. "Which venues have Laser Projector and AC?")
+      else if (lowerQuery.includes('ac') || lowerQuery.includes('air condition') || lowerQuery.includes('laser') || lowerQuery.includes('sound') || lowerQuery.includes('mic') || lowerQuery.includes('projector') || lowerQuery.includes('dolby') || lowerQuery.includes('light') || lowerQuery.includes('stream')) {
+        const techKeywords = [];
+        if (lowerQuery.includes('ac') || lowerQuery.includes('air condition')) techKeywords.push('Air Conditioned', 'AC');
+        if (lowerQuery.includes('laser')) techKeywords.push('Laser Projector');
+        if (lowerQuery.includes('dolby')) techKeywords.push('Dolby Audio');
+        if (lowerQuery.includes('mic') || lowerQuery.includes('sound')) techKeywords.push('Sound', 'Mic', 'PA System');
+
+        const matchingTechVenues = venues.filter(v => 
+          v.tech.some(t => techKeywords.some(kw => t.toLowerCase().includes(kw.toLowerCase())))
+        );
+
+        if (matchingTechVenues.length > 0) {
+          const list = matchingTechVenues.slice(0, 5).map(v => `• **${v.name}** (${v.capacity} seats): ${v.tech.join(', ')}`).join('\n');
+          reply = `🎥 **Venues matching your AV / Technology criteria:**\n\n${list}`;
+        } else {
+          reply = `🔊 **Vidyalankar Campus Tech Specifications:**\n\nOur key spaces (Auditorium, Board Rooms, Seminar Halls) come equipped with Laser Projectors, Line Array Speakers, Wireless Mics, Stage Focus Lights, and AC. Additional AV items like 4K Live Streaming or Video Walls can be selected under the "Specific Requirements" tab!`;
+        }
+      }
+      // 4. Specific Venue Detail Lookup
+      else if (matchedVenue) {
+        reply = `🏛️ **${matchedVenue.name} Specifications:**\n\n• **Seating Capacity:** ${matchedVenue.capacity} seats\n• **Current Availability:** ${matchedVenue.status}\n• **Installed Technology:** ${matchedVenue.tech.join(', ')}\n\n*Would you like to book ${matchedVenue.name}? Select it under the "Book Venue" tab.*`;
+      }
+      // 5. Workflow / Policy / Approval Questions
+      else if (lowerQuery.includes('approval') || lowerQuery.includes('approve') || lowerQuery.includes('process') || lowerQuery.includes('workflow') || lowerQuery.includes('moderator') || lowerQuery.includes('admin') || lowerQuery.includes('gate pass') || lowerQuery.includes('pdf') || lowerQuery.includes('receipt')) {
+        reply = `📜 **V-Booking 2-Tier Approval Workflow:**\n\n1️⃣ **Tier 1 (Moderator Review):** Your faculty requisition is sent to the Department Moderator to verify venue availability and coordinator details.\n2️⃣ **Tier 2 (Admin Stamping):** Once approved by the Moderator, the Admin applies a digital signature stamp and sequence tracking number.\n3️⃣ **PDF Requisition Receipt:** An official downloadable PDF Gate Pass with barcodes and digital signatures is generated automatically for campus security clearance.`;
+      }
+      // 6. Food / High Tea / Catering Questions
+      else if (lowerQuery.includes('food') || lowerQuery.includes('tea') || lowerQuery.includes('catering') || lowerQuery.includes('snack') || lowerQuery.includes('hospitality')) {
+        reply = `☕ **Catering & Hospitality Services:**\n\nYou can request High Tea, VIP Refreshments, or Full Event Catering under the **"Specific Requirements"** tab when submitting your booking request!`;
+      }
+      // 7. Booking Instructions
+      else if (lowerQuery.includes('book') || lowerQuery.includes('how') || lowerQuery.includes('submit') || lowerQuery.includes('form')) {
+        reply = `📝 **How to Submit a Venue Booking Request:**\n\n1. Click on the **"Book Venue"** tab.\n2. Select your Institute (*VSIT, VIT, VDT, VPT, etc.*) and event timing.\n3. Choose your desired venue with seating capacity.\n4. Select logistics items (Mics, Projector, Stage Lamp, Catering) under **"Specific Requirements"**.\n5. Draw your Faculty Digital Signature and click **Submit Requisition**!`;
+      }
+      // Default Assistant Knowledge Response
+      else {
+        reply = `🤖 **Vidyalankar Dnyanpeeth Trust AI Assistant:**\n\nI can answer questions about all **32+ campus venues**, seating capacities, installed AV equipment, approval workflows, and booking policies.\n\n**Try asking me:**\n• *"Can 200 people seat in auditorium?"*\n• *"Which halls seat 150 students?"*\n• *"Which venues have Laser Projector and AC?"*\n• *"How does the 2-Tier approval process work?"*\n• *"What tech is installed in Board Room 7th Floor?"*`;
       }
 
       setChatMessages(prev => [...prev, { sender: 'bot', text: reply }]);
-    }, 400);
+    }, 250);
   };
 
   // --- ADMIN VENUE MANAGER UPDATER ---
@@ -498,7 +553,7 @@ export default function RequisitionPortal() {
   const pendingAdminBookings = bookings.filter(b => b.status === 'pending_admin');
 
   return (
-    <div className="min-h-screen bg-stone-900 text-stone-100 font-sans pb-16 selection:bg-orange-500 selection:text-white">
+    <div className={`min-h-screen font-sans pb-16 selection:bg-orange-500 selection:text-white transition-colors duration-300 ${theme === 'light' ? 'bg-amber-50/50 text-stone-900' : 'bg-stone-900 text-stone-100'}`}>
       
       {/* --- TOP BRAND HEADER & NAVBAR --- */}
       <header className="sticky top-0 z-50 glass-nav shadow-2xl">
@@ -520,7 +575,7 @@ export default function RequisitionPortal() {
             </div>
           </div>
 
-          {/* User Role Switcher & Azure OAuth Login */}
+          {/* User Role Switcher, Dark Mode Toggle & Azure OAuth Login */}
           <div className="flex items-center gap-2 flex-wrap">
             <div className="hidden md:flex items-center gap-1.5 bg-stone-950/80 px-3 py-1.5 rounded-xl border border-stone-800 text-xs font-bold text-stone-300">
               <span className="text-[10px] text-stone-500 uppercase tracking-wider">Role:</span>
@@ -529,6 +584,7 @@ export default function RequisitionPortal() {
               </span>
             </div>
 
+            <ThemeToggle theme={theme} setTheme={setTheme} />
             <LoginButton />
           </div>
         </div>
