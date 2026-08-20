@@ -11,6 +11,31 @@ import { ShieldCheck, Sparkles, Building2, Lock, AlertCircle, ArrowRight, User, 
 
 const IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 
+// High-quality campus venue & event photography for background brick slide
+const SLIDE_IMAGES_COL_1 = [
+  "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=700&auto=format&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=700&auto=format&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=700&auto=format&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1475721027785-f74eccf877e2?w=700&auto=format&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1523580494863-6f3031224c94?w=700&auto=format&fit=crop&q=80"
+];
+
+const SLIDE_IMAGES_COL_2 = [
+  "https://images.unsplash.com/photo-1511578314322-379afb476865?w=700&auto=format&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1587825140708-dfaf72ae4b04?w=700&auto=format&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?w=700&auto=format&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1505373877841-8d25f7d46678?w=700&auto=format&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1517457373958-b7bdd4587205?w=700&auto=format&fit=crop&q=80"
+];
+
+const SLIDE_IMAGES_COL_3 = [
+  "https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=700&auto=format&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1519741497674-611481863552?w=700&auto=format&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1501286353178-1ec881214838?w=700&auto=format&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1497366216548-37526070297c?w=700&auto=format&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1527529482837-4698179dc6ce?w=700&auto=format&fit=crop&q=80"
+];
+
 export default function RootLayout({ children }) {
   const [session, setSession] = useState(null);
   const [userRole, setUserRole] = useState(null); 
@@ -184,29 +209,75 @@ export default function RootLayout({ children }) {
     }
   };
 
-  // --- FUTURISTIC VR/AR SPATIAL LOGIN SCREEN ---
+  // --- CONTINUOUS PHOTO SLIDE WITH BRICK GRID LOGIN SCREEN ---
   if (!loading && !session && !userRole) {
     return (
       <html lang="en" suppressHydrationWarning>
         <head>
-          <title>Vidyalankar Dnyanpeeth Trust | Spatial Portal</title>
+          <title>Vidyalankar Dnyanpeeth Trust | Spatial Requisition Portal</title>
           <link rel="manifest" href="/manifest.json" />
           <meta name="theme-color" content="#f97316" />
         </head>
-        <body className="min-h-screen bg-[#090a0f] flex items-center justify-center p-4 sm:p-6 relative overflow-hidden font-sans text-stone-100 selection:bg-orange-500 selection:text-white">
+        <body className="min-h-screen bg-[#07080c] flex items-center justify-center p-4 sm:p-6 relative overflow-hidden font-sans text-stone-100 selection:bg-orange-500 selection:text-white">
           <InspectProtection />
           
-          {/* Spatial VR/AR Neon Perspective Glows */}
-          <div className="absolute top-[-25%] left-[-15%] w-[600px] h-[600px] bg-gradient-to-br from-orange-600/30 via-amber-500/20 to-transparent rounded-full blur-[150px] pointer-events-none animate-pulse"></div>
-          <div className="absolute bottom-[-25%] right-[-15%] w-[650px] h-[650px] bg-gradient-to-tl from-indigo-600/30 via-purple-600/20 to-transparent rounded-full blur-[160px] pointer-events-none"></div>
-          <div className="absolute top-[40%] right-[30%] w-[350px] h-[350px] bg-emerald-500/10 rounded-full blur-[140px] pointer-events-none"></div>
+          {/* ====================================================================== */}
+          {/* LAYER 1: CONTINUOUS 3-COLUMN VERTICAL PHOTO SLIDE MARQUEE */}
+          {/* ====================================================================== */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-35 scale-105">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 h-[200vh] -translate-y-24">
+              
+              {/* Column 1 - Sliding Up */}
+              <div className="flex flex-col gap-4 animate-slide-up-slow">
+                {[...SLIDE_IMAGES_COL_1, ...SLIDE_IMAGES_COL_1].map((src, i) => (
+                  <div key={`c1-${i}`} className="w-full h-64 sm:h-80 rounded-3xl overflow-hidden border border-white/10 shadow-2xl shrink-0 bg-stone-900">
+                    <img src={src} alt="Campus Hall" className="w-full h-full object-cover grayscale-[20%] hover:grayscale-0 transition-all duration-700 hover:scale-105" />
+                  </div>
+                ))}
+              </div>
 
-          {/* Spatial Glass Container */}
-          <div className="w-full max-w-[480px] bg-[#12131c]/80 backdrop-blur-3xl border border-white/10 rounded-[38px] shadow-[0_20px_70px_rgba(0,0,0,0.7)] p-8 sm:p-12 relative z-10 animate-fade-in-up">
+              {/* Column 2 - Sliding Down */}
+              <div className="flex flex-col gap-4 animate-slide-down-slow">
+                {[...SLIDE_IMAGES_COL_2, ...SLIDE_IMAGES_COL_2].map((src, i) => (
+                  <div key={`c2-${i}`} className="w-full h-64 sm:h-80 rounded-3xl overflow-hidden border border-white/10 shadow-2xl shrink-0 bg-stone-900">
+                    <img src={src} alt="Campus Event" className="w-full h-full object-cover grayscale-[20%] hover:grayscale-0 transition-all duration-700 hover:scale-105" />
+                  </div>
+                ))}
+              </div>
+
+              {/* Column 3 - Sliding Up (Visible on MD+) */}
+              <div className="hidden md:flex flex-col gap-4 animate-slide-up-fast">
+                {[...SLIDE_IMAGES_COL_3, ...SLIDE_IMAGES_COL_3].map((src, i) => (
+                  <div key={`c3-${i}`} className="w-full h-64 sm:h-80 rounded-3xl overflow-hidden border border-white/10 shadow-2xl shrink-0 bg-stone-900">
+                    <img src={src} alt="Campus Auditorium" className="w-full h-full object-cover grayscale-[20%] hover:grayscale-0 transition-all duration-700 hover:scale-105" />
+                  </div>
+                ))}
+              </div>
+
+            </div>
+          </div>
+
+          {/* ====================================================================== */}
+          {/* LAYER 2: BRICK GRID PATTERN TEXTURE OVERLAY */}
+          {/* ====================================================================== */}
+          <div className="absolute inset-0 brick-grid-texture pointer-events-none opacity-40"></div>
+
+          {/* ====================================================================== */}
+          {/* LAYER 3: RADIAL VIGNETTE & AMBIENT NEON GLOWS */}
+          {/* ====================================================================== */}
+          <div className="absolute inset-0 bg-radial from-transparent via-[#07080c]/70 to-[#07080c]/95 pointer-events-none backdrop-blur-[3px]"></div>
+          
+          <div className="absolute top-[-20%] left-[-10%] w-[550px] h-[550px] bg-gradient-to-br from-orange-600/35 via-amber-500/20 to-transparent rounded-full blur-[140px] pointer-events-none animate-pulse"></div>
+          <div className="absolute bottom-[-20%] right-[-10%] w-[600px] h-[600px] bg-gradient-to-tl from-indigo-600/35 via-purple-600/25 to-transparent rounded-full blur-[150px] pointer-events-none"></div>
+
+          {/* ====================================================================== */}
+          {/* LAYER 4: IMMERSIVE FOREGROUND SPATIAL CARD */}
+          {/* ====================================================================== */}
+          <div className="w-full max-w-[490px] bg-[#10121b]/85 backdrop-blur-3xl border border-white/15 rounded-[38px] shadow-[0_25px_80px_rgba(0,0,0,0.85)] p-8 sm:p-12 relative z-10 animate-fade-in-up">
             
-            {/* Holographic Header Pill */}
-            <div className="flex justify-center mb-8">
-              <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-white/[0.04] border border-white/10 shadow-inner backdrop-blur-md">
+            {/* Holographic Campus Pill */}
+            <div className="flex justify-center mb-7">
+              <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-white/[0.05] border border-white/10 shadow-inner backdrop-blur-md">
                 <div className="w-2.5 h-2.5 rounded-full bg-gradient-to-r from-orange-500 to-amber-400 animate-ping"></div>
                 <span className="text-[11px] font-black tracking-[0.2em] text-orange-400 uppercase">
                   Vidyalankar Dnyanpeeth Trust
@@ -215,11 +286,11 @@ export default function RootLayout({ children }) {
             </div>
 
             {/* Portal Headline & Clean Description */}
-            <div className="text-center space-y-3 mb-10">
-              <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white uppercase leading-tight bg-gradient-to-r from-white via-stone-100 to-stone-400 bg-clip-text text-transparent">
+            <div className="text-center space-y-3 mb-9">
+              <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white uppercase leading-tight bg-gradient-to-r from-white via-stone-100 to-stone-300 bg-clip-text text-transparent">
                 Step Into The Future
               </h1>
-              <p className="text-stone-400 text-xs sm:text-[13px] font-medium leading-relaxed max-w-sm mx-auto">
+              <p className="text-stone-300 text-xs sm:text-[13px] font-medium leading-relaxed max-w-sm mx-auto">
                 Centralized campus portal for automated venue scheduling, multi-tier clearances, and live streaming broadcasts across all trust institutes.
               </p>
             </div>
@@ -237,7 +308,7 @@ export default function RootLayout({ children }) {
               <button 
                 type="button" 
                 onClick={handleMicrosoftLogin} 
-                className="w-full py-4 px-6 rounded-2xl font-black text-xs uppercase tracking-widest text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:via-indigo-500 hover:to-blue-600 transition-all duration-300 shadow-[0_10px_30px_rgba(37,99,235,0.35)] border border-blue-400/30 flex items-center justify-center gap-3 active:scale-[0.98] group"
+                className="w-full py-4 px-6 rounded-2xl font-black text-xs uppercase tracking-widest text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:via-indigo-500 hover:to-blue-600 transition-all duration-300 shadow-[0_10px_35px_rgba(37,99,235,0.4)] border border-blue-400/40 flex items-center justify-center gap-3 active:scale-[0.98] group cursor-pointer"
               >
                 <svg className="w-5 h-5 shrink-0 group-hover:scale-110 transition-transform duration-300" viewBox="0 0 23 23">
                   <path fill="#f35325" d="M1 1h10v10H1z"/>
@@ -248,8 +319,8 @@ export default function RootLayout({ children }) {
                 <span>Sign in with Microsoft Outlook</span>
               </button>
 
-              <div className="pt-4 border-t border-white/5 text-center">
-                <p className="text-[11px] text-stone-500 font-semibold tracking-wider uppercase">
+              <div className="pt-4 border-t border-white/10 text-center">
+                <p className="text-[11px] text-stone-400 font-semibold tracking-wider uppercase">
                   &copy; {new Date().getFullYear()} Vidyalankar Dnyanpeeth Trust
                 </p>
               </div>
@@ -273,7 +344,7 @@ export default function RootLayout({ children }) {
         <InspectProtection />
         
         {loading && (
-          <div className="fixed inset-0 bg-[#090a0f]/90 backdrop-blur-md z-100 flex flex-col items-center justify-center gap-4 text-orange-400">
+          <div className="fixed inset-0 bg-[#07080c]/90 backdrop-blur-md z-100 flex flex-col items-center justify-center gap-4 text-orange-400">
             <div className="h-12 w-12 rounded-full border-4 border-orange-500/20 border-t-orange-500 animate-spin"></div>
             <p className="text-xs font-bold uppercase tracking-widest text-stone-200">Connecting Vidyalankar Portal...</p>
           </div>
@@ -281,7 +352,7 @@ export default function RootLayout({ children }) {
 
         {/* First-Time User Profile Setup Modal */}
         {needsProfileOnboarding && (
-          <div className="fixed inset-0 z-100 bg-[#090a0f]/85 backdrop-blur-2xl flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-100 bg-[#07080c]/85 backdrop-blur-2xl flex items-center justify-center p-4">
             <div className="w-full max-w-lg bg-[#12131c] border border-white/10 rounded-[36px] shadow-2xl p-8 sm:p-10 space-y-6 animate-fade-in-up text-white">
               
               <div className="border-b border-white/10 pb-4">
