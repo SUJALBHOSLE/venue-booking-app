@@ -17,6 +17,7 @@ import { generateGatePass } from '@/utils/generatePDF';
 import LoginButton from '@/components/LoginButton';
 import ThemeToggle from '@/components/ThemeToggle';
 import InteractiveCalendarWidget from '@/components/InteractiveCalendarWidget';
+import { getUserRolesRegistry, setUserRoleRights, removeUserRoleRights, resolveUserRole } from '@/lib/accessControl';
 
 const SignatureCanvas = dynamic(() => import('react-signature-canvas'), { ssr: false });
 
@@ -175,14 +176,25 @@ const INITIAL_MOCK_BOOKINGS = [
 export default function RequisitionPortal() {
   const [activeTab, setActiveTab] = useState('landing-calendar'); // 'landing-calendar', 'book', 'requirements', 'analytics', 'chatbot', 'moderator', 'admin', 'my-bookings'
   const [userRole, setUserRole] = useState('faculty'); // 'faculty', 'moderator', 'admin'
+  const [userRolesRegistry, setUserRolesRegistry] = useState(getUserRolesRegistry());
+  const [newUserEmailInput, setNewUserEmailInput] = useState('');
+  const [newUserNameInput, setNewUserNameInput] = useState('');
+  const [newUserRoleInput, setNewUserRoleInput] = useState('moderator');
+
   const [bookings, setBookings] = useState(INITIAL_MOCK_BOOKINGS);
   const [venues, setVenues] = useState(INITIAL_VENUES_DATABASE);
   const [selectedVenues, setSelectedVenues] = useState([]);
   const [loading, setLoading] = useState(true);
   const [userSessionId, setUserSessionId] = useState('demo-user');
-  const [userEmail, setUserEmail] = useState('faculty@vdt.edu.in');
+  const [userEmail, setUserEmail] = useState('sujal.bhosle1@vsit.edu.in');
   const [selectedEventModal, setSelectedEventModal] = useState(null);
   const [editingBooking, setEditingBooking] = useState(null);
+
+  // Requirement Modification by Moderator/Admin State
+  const [modRequirementModalOpen, setModRequirementModalOpen] = useState(false);
+  const [targetBookingForReqEdit, setTargetBookingForReqEdit] = useState(null);
+  const [modEditedRequirements, setModEditedRequirements] = useState({});
+  const [modRequirementReason, setModRequirementReason] = useState('');
 
   // Filter States for Faculty History
   const [historyStatusFilter, setHistoryStatusFilter] = useState('ALL'); // 'ALL', 'pending', 'approved', 'rejected'
@@ -208,7 +220,7 @@ export default function RequisitionPortal() {
 
   // AI Chatbot State
   const [chatMessages, setChatMessages] = useState([
-    { sender: 'bot', text: '👋 Hello! I am the Vidyalankar Dnyanpeeth Trust AI Venue Assistant.\n\nAsk me anything like:\n• "Can 200 people seat in auditorium?"\n• "Which halls seat 150 people?"\n• "Which venues have Laser Projector and AC?"\n• "How does the 2-Tier approval process work?"' }
+    { sender: 'bot', text: '👋 Hi there! I am your Vidyalankar Campus Assistant.\n\nI can help you book venues, find halls matching your guest count, check AV & projector tech, and guide you through the approval process.\n\nHow can I help you today?' }
   ]);
   const [chatInput, setChatInput] = useState('');
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -227,7 +239,10 @@ export default function RequisitionPortal() {
 
   useEffect(() => {
     const savedRole = localStorage.getItem('userRole') || 'faculty';
+    const savedEmail = localStorage.getItem('userEmail') || 'sujal.bhosle1@vsit.edu.in';
     setUserRole(savedRole);
+    setUserEmail(savedEmail);
+    setUserRolesRegistry(getUserRolesRegistry());
     fetchBookingsFromDatabase();
 
     const savedTheme = localStorage.getItem('theme') || 'dark';
@@ -283,7 +298,39 @@ export default function RequisitionPortal() {
     window.location.reload();
   };
 
-  // --- EXPANDED HIGH-CONTEXT AI CHATBOT LOGIC ---
+  // --- ACCESS CONTROL: ADMIN ROLE MANAGEMENT HANDLERS ---
+  const handleAddUserRole = (e) => {
+    e.preventDefault();
+    const cleanEmail = (newUserEmailInput || '').trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return alert("⚠️ Please enter a valid Outlook / Institute email address.");
+    }
+    const updated = setUserRoleRights(cleanEmail, newUserRoleInput, newUserNameInput.trim());
+    setUserRolesRegistry(updated);
+    setNewUserEmailInput('');
+    setNewUserNameInput('');
+    alert(`✅ Successfully assigned ${newUserRoleInput.toUpperCase()} rights to ${cleanEmail}!`);
+  };
+
+  const handleUpdateRole = (email, newRole) => {
+    const updated = setUserRoleRights(email, newRole);
+    setUserRolesRegistry(updated);
+    if (userEmail && userEmail.toLowerCase() === email.toLowerCase()) {
+      setUserRole(newRole);
+      localStorage.setItem('userRole', newRole);
+    }
+    alert(`✅ Updated access rights for ${email} to ${newRole.toUpperCase()}.`);
+  };
+
+  const handleRemoveRole = (email) => {
+    if (confirm(`Are you sure you want to revoke custom rights for ${email}? (They will default to Faculty role)`)) {
+      const updated = removeUserRoleRights(email);
+      setUserRolesRegistry(updated);
+      alert(`Role rights revoked for ${email}.`);
+    }
+  };
+
+  // --- NATURAL HUMAN-LIKE STEP-BY-STEP AI CHATBOT LOGIC ---
   const handleSendChatMessage = (textToSend = chatInput) => {
     const query = (textToSend || '').trim();
     if (!query) return;
@@ -309,68 +356,53 @@ export default function RequisitionPortal() {
         (v.name.includes('Playground') && (lowerQuery.includes('ground') || lowerQuery.includes('playground')))
       );
 
-      // 1. Capacity + Specific Venue Query (e.g. "Can 200 people seat in Auditorium?")
-      if (matchedVenue && requestedCapacity !== null) {
+      // 1. Step-by-step guidance on how to book
+      if (lowerQuery.includes('how to book') || lowerQuery.includes('guide') || lowerQuery.includes('step') || lowerQuery.includes('book venue') || lowerQuery.includes('how do i book') || lowerQuery.includes('booking process') || lowerQuery.includes('booking')) {
+        reply = `Hi there! I'd be glad to help you book a venue. Here is the step-by-step guide:
+
+1️⃣ **Step 1 — Go to the "Book Venue" Tab**: Click the Book Venue button in the top navigation bar.
+2️⃣ **Step 2 — Enter Event Information**: Choose your institute (VSIT, VIT, VDT, etc.), event title, date, and time slot.
+3️⃣ **Step 3 — Pick Your Desired Space**: Select from our 32+ campus venues (Auditorium, Amphitheatre, Seminar Halls) according to your expected attendance.
+4️⃣ **Step 4 — Add Logistics & Tech**: In the Requirements checklist, pick items like wireless mics, laser projector, podium, stage lamp, or catering. If you are broadcasting live, simply tick "Live Streaming Setup" and enter your pre-scheduled YouTube URL!
+5️⃣ **Step 5 — Sign & Submit**: Draw your faculty signature on the digital canvas and click "Submit Requisition".
+
+Your department moderator will review and approve the request, and you will instantly be able to download your official stamped Gate Pass from the "My Requisitions" tab!`;
+      }
+      // 2. Capacity + Specific Venue Query (e.g. "Can 200 people seat in Auditorium?")
+      else if (matchedVenue && requestedCapacity !== null) {
         if (requestedCapacity <= matchedVenue.capacity) {
-          reply = `✅ **Yes!** ${matchedVenue.name} can accommodate **${requestedCapacity} people**.\n\n• **Seating Capacity:** ${matchedVenue.capacity} seats\n• **Status:** ${matchedVenue.status}\n• **Installed AV & Tech:** ${matchedVenue.tech.join(', ')}`;
+          reply = `Yes, definitely! The **${matchedVenue.name}** has a seating capacity of **${matchedVenue.capacity} seats**, which is plenty of space for your group of **${requestedCapacity} people**.\n\nIt features: ${matchedVenue.tech.join(', ')}.\n\nWould you like to book it now? You can head right over to the "Book Venue" tab!`;
         } else {
           const suitableVenues = venues.filter(v => v.capacity >= requestedCapacity).sort((a,b) => a.capacity - b.capacity);
-          const suitableList = suitableVenues.slice(0, 4).map(v => `• **${v.name}**: ${v.capacity} seats (${v.tech.slice(0, 2).join(', ')})`).join('\n');
-          reply = `⚠️ **Capacity Warning:** ${matchedVenue.name} seats up to **${matchedVenue.capacity} people**, which is less than your requested **${requestedCapacity} people**.\n\n**Recommended Alternatives for ${requestedCapacity}+ Guests:**\n${suitableList || '• **Playground 1**: 1000 capacity\n• **VIT Amphitheatre**: 500 capacity'}`;
+          const suitableList = suitableVenues.slice(0, 3).map(v => `• **${v.name}** (${v.capacity} seats)`).join('\n');
+          reply = `Just a quick note — the **${matchedVenue.name}** is rated for up to **${matchedVenue.capacity} people**, which is a bit under your expected **${requestedCapacity} attendees**.\n\nFor **${requestedCapacity}+ guests**, I recommend checking out:\n${suitableList || '• **VIT Amphitheatre** (500 seats)\n• **Playground 1** (1,000 capacity)'}\n\nLet me know if you'd like more details on any of these!`;
         }
       }
-      // 2. Capacity-Only Search (e.g. "Which halls seat 150 people?")
-      else if (requestedCapacity !== null && (lowerQuery.includes('seat') || lowerQuery.includes('capacity') || lowerQuery.includes('people') || lowerQuery.includes('student') || lowerQuery.includes('hall') || lowerQuery.includes('room') || lowerQuery.includes('venue') || lowerQuery.includes('fit') || lowerQuery.includes('hold'))) {
+      // 3. General Capacity search (e.g. "Which halls seat 150 people?")
+      else if (requestedCapacity !== null && (lowerQuery.includes('seat') || lowerQuery.includes('capacity') || lowerQuery.includes('people') || lowerQuery.includes('student') || lowerQuery.includes('hall') || lowerQuery.includes('fit') || lowerQuery.includes('hold'))) {
         const fittingVenues = venues.filter(v => v.capacity >= requestedCapacity).sort((a,b) => a.capacity - b.capacity);
         if (fittingVenues.length > 0) {
-          const options = fittingVenues.slice(0, 5).map(v => `• **${v.name}**: ${v.capacity} seating capacity | Tech: ${v.tech.slice(0, 2).join(', ')}`).join('\n');
-          reply = `🏛️ **Campus Venues for ${requestedCapacity}+ People:**\n\n${options}\n\n*Tip: Click the "Book Venue" tab to initiate a requisition for any of these spaces.*`;
+          const options = fittingVenues.slice(0, 4).map(v => `• **${v.name}** (${v.capacity} seats) — Equipped with ${v.tech.slice(0, 2).join(', ')}`).join('\n');
+          reply = `Here are the best campus venues that can comfortably accommodate **${requestedCapacity} or more people**:\n\n${options}\n\nYou can select any of these directly under the "Book Venue" tab.`;
         } else {
-          reply = `🏟️ For large gatherings of **${requestedCapacity}+ people**, we recommend:\n\n• **Playground 1**: 1,000 capacity (Full Sports Ground, Flood Lights, Generator Power)\n• **Playground 2**: 800 capacity\n• **Parking Area**: 600 capacity\n• **VIT Amphitheatre**: 500 capacity`;
+          reply = `For grand gatherings of **${requestedCapacity}+ guests**, we recommend our expansive outdoor spaces:\n\n• **Playground 1**: 1,000 capacity\n• **Playground 2**: 800 capacity\n• **VIT Amphitheatre**: 500 capacity`;
         }
       }
-      // 3. Tech Equipment & Feature Filter (e.g. "Which venues have Laser Projector and AC?")
-      else if (lowerQuery.includes('ac') || lowerQuery.includes('air condition') || lowerQuery.includes('laser') || lowerQuery.includes('sound') || lowerQuery.includes('mic') || lowerQuery.includes('projector') || lowerQuery.includes('dolby') || lowerQuery.includes('light') || lowerQuery.includes('stream')) {
-        const techKeywords = [];
-        if (lowerQuery.includes('ac') || lowerQuery.includes('air condition')) techKeywords.push('Air Conditioned', 'AC');
-        if (lowerQuery.includes('laser')) techKeywords.push('Laser Projector');
-        if (lowerQuery.includes('dolby')) techKeywords.push('Dolby Audio');
-        if (lowerQuery.includes('mic') || lowerQuery.includes('sound')) techKeywords.push('Sound', 'Mic', 'PA System');
-
-        const matchingTechVenues = venues.filter(v => 
-          v.tech.some(t => techKeywords.some(kw => t.toLowerCase().includes(kw.toLowerCase())))
-        );
-
-        if (matchingTechVenues.length > 0) {
-          const list = matchingTechVenues.slice(0, 5).map(v => `• **${v.name}** (${v.capacity} seats): ${v.tech.join(', ')}`).join('\n');
-          reply = `🎥 **Venues matching your AV / Technology criteria:**\n\n${list}`;
-        } else {
-          reply = `🔊 **Vidyalankar Campus Tech Specifications:**\n\nOur key spaces (Auditorium, Board Rooms, Seminar Halls) come equipped with Laser Projectors, Line Array Speakers, Wireless Mics, Stage Focus Lights, and AC. Additional AV items like 4K Live Streaming or Video Walls can be selected under the "Specific Requirements" tab!`;
-        }
+      // 4. Tech & AV Equipment questions
+      else if (lowerQuery.includes('ac') || lowerQuery.includes('air condition') || lowerQuery.includes('laser') || lowerQuery.includes('sound') || lowerQuery.includes('mic') || lowerQuery.includes('projector') || lowerQuery.includes('stream') || lowerQuery.includes('youtube')) {
+        reply = `Our auditoriums, board rooms, and major seminar halls are fully air-conditioned and fitted with Laser Projectors, line-array speaker systems, and wireless microphones.\n\nIf you need live broadcasting or 4K recording, simply tick the "Live Streaming Setup" option on the booking form and paste your YouTube broadcast link — it will be automatically featured on the homepage!`;
       }
-      // 4. Specific Venue Detail Lookup
-      else if (matchedVenue) {
-        reply = `🏛️ **${matchedVenue.name} Specifications:**\n\n• **Seating Capacity:** ${matchedVenue.capacity} seats\n• **Current Availability:** ${matchedVenue.status}\n• **Installed Technology:** ${matchedVenue.tech.join(', ')}\n\n*Would you like to book ${matchedVenue.name}? Select it under the "Book Venue" tab.*`;
+      // 5. Approval & Gate Pass questions
+      else if (lowerQuery.includes('approval') || lowerQuery.includes('approve') || lowerQuery.includes('gate pass') || lowerQuery.includes('pdf') || lowerQuery.includes('moderator') || lowerQuery.includes('admin')) {
+        reply = `Here is how the approval & gate pass process works:\n\n1. **Faculty Submission**: Coordinator submits booking with digital signature.\n2. **Moderator Review**: The assigned department moderator verifies logistics, adjusts requirements if necessary with recorded remarks, and signs digitally to grant approval.\n3. **Gate Pass Issuance**: Once approved, an official stamped PDF Gate Pass with QR verification code and security barcodes is ready for instant download in "My Requisitions"!`;
       }
-      // 5. Workflow / Policy / Approval Questions
-      else if (lowerQuery.includes('approval') || lowerQuery.includes('approve') || lowerQuery.includes('process') || lowerQuery.includes('workflow') || lowerQuery.includes('moderator') || lowerQuery.includes('admin') || lowerQuery.includes('gate pass') || lowerQuery.includes('pdf') || lowerQuery.includes('receipt')) {
-        reply = `📜 **V-Booking 2-Tier Approval Workflow:**\n\n1️⃣ **Tier 1 (Moderator Review):** Your faculty requisition is sent to the Department Moderator to verify venue availability and coordinator details.\n2️⃣ **Tier 2 (Admin Stamping):** Once approved by the Moderator, the Admin applies a digital signature stamp and sequence tracking number.\n3️⃣ **PDF Requisition Receipt:** An official downloadable PDF Gate Pass with barcodes and digital signatures is generated automatically for campus security clearance.`;
-      }
-      // 6. Food / High Tea / Catering Questions
-      else if (lowerQuery.includes('food') || lowerQuery.includes('tea') || lowerQuery.includes('catering') || lowerQuery.includes('snack') || lowerQuery.includes('hospitality')) {
-        reply = `☕ **Catering & Hospitality Services:**\n\nYou can request High Tea, VIP Refreshments, or Full Event Catering under the **"Specific Requirements"** tab when submitting your booking request!`;
-      }
-      // 7. Booking Instructions
-      else if (lowerQuery.includes('book') || lowerQuery.includes('how') || lowerQuery.includes('submit') || lowerQuery.includes('form')) {
-        reply = `📝 **How to Submit a Venue Booking Request:**\n\n1. Click on the **"Book Venue"** tab.\n2. Select your Institute (*VSIT, VIT, VDT, VPT, etc.*) and event timing.\n3. Choose your desired venue with seating capacity.\n4. Select logistics items (Mics, Projector, Stage Lamp, Catering) under **"Specific Requirements"**.\n5. Draw your Faculty Digital Signature and click **Submit Requisition**!`;
-      }
-      // Default Assistant Knowledge Response
+      // 6. Generic friendly default response
       else {
-        reply = `🤖 **Vidyalankar Dnyanpeeth Trust AI Assistant:**\n\nI can answer questions about all **32+ campus venues**, seating capacities, installed AV equipment, approval workflows, and booking policies.\n\n**Try asking me:**\n• *"Can 200 people seat in auditorium?"*\n• *"Which halls seat 150 students?"*\n• *"Which venues have Laser Projector and AC?"*\n• *"How does the 2-Tier approval process work?"*\n• *"What tech is installed in Board Room 7th Floor?"*`;
+        reply = `Hello! I am your Vidyalankar Campus Assistant. I'm here to help you find the perfect venue, check seating capacities, guide you step-by-step through booking, or assist with technical requirements.\n\n**Feel free to ask:**\n• *"How do I book a venue?"*\n• *"Can 250 people fit in the Auditorium?"*\n• *"Which halls have Laser Projectors and AC?"*\n• *"How does the moderator approval and gate pass work?"*\n\nWhat would you like to know?`;
       }
 
       setChatMessages(prev => [...prev, { sender: 'bot', text: reply }]);
-    }, 250);
+    }, 200);
   };
 
   // --- ADMIN VENUE MANAGER UPDATER ---
@@ -454,7 +486,82 @@ export default function RequisitionPortal() {
     setActiveTab('my-bookings');
   };
 
-  // --- MODERATOR ACTION: EDIT & APPROVE ---
+  // --- MODERATOR & ADMIN REQUIREMENT EDIT MODAL HANDLERS ---
+  const handleOpenReqEditModal = (booking) => {
+    setTargetBookingForReqEdit(booking);
+    setModEditedRequirements({ ...(booking.items?.requirements || {}) });
+    setModRequirementReason(booking.modification_reason || '');
+    setModRequirementModalOpen(true);
+  };
+
+  const handleSaveReqEditModal = async () => {
+    if (!targetBookingForReqEdit) return;
+    if (!modRequirementReason.trim()) {
+      return alert("⚠️ Please provide a mandatory reason for modifying the faculty's requested requirements.");
+    }
+
+    const updatedBooking = {
+      ...targetBookingForReqEdit,
+      items: {
+        ...targetBookingForReqEdit.items,
+        requirements: modEditedRequirements
+      },
+      modification_reason: modRequirementReason.trim(),
+      modified_by: userRole === 'admin' ? 'Admin Office' : 'Department Moderator',
+      modified_at: new Date().toISOString()
+    };
+
+    try {
+      await supabase.from('bookings').update({
+        items: updatedBooking.items,
+        modification_reason: updatedBooking.modification_reason
+      }).eq('id', targetBookingForReqEdit.id);
+    } catch (e) {
+      console.log("Local state updated:", e);
+    }
+
+    setBookings(prev => prev.map(b => b.id === targetBookingForReqEdit.id ? updatedBooking : b));
+    alert("✅ Logistics & Technical Requirements updated with recorded reason!");
+    setModRequirementModalOpen(false);
+    setTargetBookingForReqEdit(null);
+  };
+
+  // --- MODERATOR ACTION: FINAL APPROVAL & GATE PASS ISSUANCE ---
+  const handleModeratorDirectFinalApprove = async (booking) => {
+    if (moderatorSigCanvas.current && moderatorSigCanvas.current.isEmpty()) {
+      return alert("⚠️ Please provide a Moderator Digital Signature to approve and seal this requisition.");
+    }
+    const moderatorSig = moderatorSigCanvas.current.getTrimmedCanvas().toDataURL();
+    const modNotes = document.getElementById(`mod-notes-${booking.id}`)?.value || "Approved and sealed by Department Moderator.";
+    const approvedAt = new Date().toISOString();
+
+    const updatedBooking = {
+      ...booking,
+      status: 'approved',
+      moderator_name: userEmail.split('@')[0] || "Moderator",
+      moderator_signature_url: moderatorSig,
+      moderator_notes: modNotes,
+      moderator_approved_at: approvedAt,
+      approved_at: approvedAt
+    };
+
+    try {
+      await supabase.from('bookings').update({ 
+        status: 'approved', 
+        moderator_signature_url: moderatorSig,
+        moderator_notes: modNotes,
+        approved_at: approvedAt
+      }).eq('id', booking.id);
+    } catch (e) {
+      console.log("Local state updated:", e);
+    }
+
+    setBookings(prev => prev.map(b => b.id === booking.id ? updatedBooking : b));
+    alert("🎉 Requisition Successfully Approved by Moderator! Official Gate Pass is now issued.");
+    generateGatePass(updatedBooking);
+  };
+
+  // --- MODERATOR ACTION: TIER 1 APPROVE (FORWARD TO ADMIN) ---
   const handleModeratorApprove = async (booking) => {
     if (moderatorSigCanvas.current && moderatorSigCanvas.current.isEmpty()) {
       return alert("⚠️ Please provide a Moderator Digital Signature to approve.");
@@ -483,14 +590,6 @@ export default function RequisitionPortal() {
 
     setBookings(prev => prev.map(b => b.id === booking.id ? updatedBooking : b));
     alert("🛡️ Moderator Tier-1 Approval Completed! Requisition forwarded to Admin for final stamping.");
-  };
-
-  // --- MODERATOR ACTION: SAVE EDITS ---
-  const handleSaveModeratorEdit = async () => {
-    if (!editingBooking) return;
-    setBookings(prev => prev.map(b => b.id === editingBooking.id ? editingBooking : b));
-    alert("✏️ Requisition details updated by Moderator.");
-    setEditingBooking(null);
   };
 
   // --- ADMIN ACTION: FINAL SIGNATURE & STAMP ---
@@ -1418,32 +1517,47 @@ export default function RequisitionPortal() {
                       <p className="text-xs text-stone-400 mt-0.5">Faculty Coordinator: <strong className="text-stone-200">{b.coordinator}</strong> ({b.user_email})</p>
                     </div>
 
-                    <button 
-                      onClick={() => setEditingBooking({ ...b })} 
-                      className="flex items-center gap-1.5 text-xs font-bold bg-stone-800 hover:bg-stone-700 text-stone-200 px-4 py-2 rounded-xl transition-all border border-stone-700"
-                    >
-                      <Edit3 size={14}/> Edit Requisition Details
-                    </button>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button 
+                        onClick={() => handleOpenReqEditModal(b)} 
+                        className={`flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl transition-all border ${theme === 'light' ? 'bg-amber-100 text-amber-950 border-amber-300 hover:bg-amber-200' : 'bg-amber-500/20 text-amber-400 border-amber-500/30 hover:bg-amber-500/30'}`}
+                      >
+                        <Sliders size={14}/> Modify Logistics Requirements
+                      </button>
+
+                      <button 
+                        onClick={() => setEditingBooking({ ...b })} 
+                        className={`flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl transition-all border ${theme === 'light' ? 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100' : 'bg-stone-800 text-stone-200 border-stone-700 hover:bg-stone-700'}`}
+                      >
+                        <Edit3 size={14}/> Edit Requisition Details
+                      </button>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                    <div className="bg-stone-900/60 p-4 rounded-2xl border border-stone-800">
-                      <span className="text-[10px] font-bold text-stone-500 uppercase block mb-1">Allocated Venues</span>
-                      <span className="font-bold text-white">{b.venue}</span>
+                    <div className={`p-4 rounded-2xl border ${theme === 'light' ? 'bg-amber-50/90 border-amber-200 text-amber-950' : 'bg-stone-900/60 border-stone-800 text-white'}`}>
+                      <span className={`text-[10px] font-bold uppercase block mb-1 ${theme === 'light' ? 'text-amber-900/60' : 'text-stone-500'}`}>Allocated Venues</span>
+                      <span className="font-bold">{b.venue}</span>
                     </div>
 
-                    <div className="bg-stone-900/60 p-4 rounded-2xl border border-stone-800">
-                      <span className="text-[10px] font-bold text-stone-500 uppercase block mb-1">Timing (IST)</span>
-                      <span className="font-bold text-white">{moment(b.start_time).format('D MMM YYYY, h:mm A')} - {moment(b.end_time).format('h:mm A')}</span>
+                    <div className={`p-4 rounded-2xl border ${theme === 'light' ? 'bg-amber-50/90 border-amber-200 text-amber-950' : 'bg-stone-900/60 border-stone-800 text-white'}`}>
+                      <span className={`text-[10px] font-bold uppercase block mb-1 ${theme === 'light' ? 'text-amber-900/60' : 'text-stone-500'}`}>Timing (IST)</span>
+                      <span className="font-bold">{moment(b.start_time).format('D MMM YYYY, h:mm A')} - {moment(b.end_time).format('h:mm A')}</span>
                     </div>
                   </div>
 
-                  <div className="bg-stone-900/40 p-4 rounded-2xl border border-stone-800">
-                    <span className="text-[10px] font-bold text-stone-400 uppercase block mb-2">Requested Logistics</span>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-stone-300">
+                  {b.modification_reason && (
+                    <div className={`p-3.5 rounded-2xl border text-xs ${theme === 'light' ? 'bg-amber-100/90 border-amber-300 text-amber-950' : 'bg-amber-950/30 border-amber-500/30 text-amber-200'}`}>
+                      <strong className="text-orange-500 font-bold">Requirement Modification Note:</strong> {b.modification_reason} (by {b.modified_by || 'Moderator'})
+                    </div>
+                  )}
+
+                  <div className={`p-4 rounded-2xl border ${theme === 'light' ? 'bg-amber-50/70 border-amber-200' : 'bg-stone-900/40 border-stone-800'}`}>
+                    <span className={`text-[10px] font-bold uppercase block mb-2 ${theme === 'light' ? 'text-amber-900/70' : 'text-stone-400'}`}>Requested Logistics</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                       {b.items?.requirements ? Object.entries(b.items.requirements).map(([k, v]) => (
-                        <div key={k} className="flex items-center gap-2 bg-stone-900 p-2 rounded-xl border border-stone-800">
-                          <CheckCircle2 size={12} className="text-blue-400 shrink-0"/>
+                        <div key={k} className={`flex items-center gap-2 p-2 rounded-xl border ${theme === 'light' ? 'bg-white border-amber-200 text-amber-950' : 'bg-stone-900 border-stone-800 text-stone-300'}`}>
+                          <CheckCircle2 size={12} className="text-blue-500 shrink-0"/>
                           <span><strong>{k}:</strong> {v}</span>
                         </div>
                       )) : <p className="text-stone-500">Standard venue setup</p>}
@@ -1451,35 +1565,39 @@ export default function RequisitionPortal() {
                   </div>
 
                   {b.signature_url && (
-                    <div className="bg-stone-900/60 p-3.5 rounded-2xl border border-stone-800 flex items-center gap-4">
-                      <span className="text-[10px] font-bold text-stone-400 uppercase">Faculty Signature:</span>
-                      <img src={b.signature_url} alt="Faculty Sig" className="h-10 w-auto bg-white/10 p-1 rounded-lg border border-white/20"/>
+                    <div className={`p-3.5 rounded-2xl border flex items-center gap-4 ${theme === 'light' ? 'bg-amber-50 border-amber-200' : 'bg-stone-900/60 border-stone-800'}`}>
+                      <span className={`text-[10px] font-bold uppercase ${theme === 'light' ? 'text-amber-900/70' : 'text-stone-400'}`}>Faculty Signature:</span>
+                      <img src={b.signature_url} alt="Faculty Sig" className="h-10 w-auto bg-white/80 p-1 rounded-lg border border-amber-300"/>
                     </div>
                   )}
 
-                  <div className="bg-blue-950/20 border border-blue-500/20 p-5 rounded-2xl space-y-4">
-                    <h4 className="text-xs font-bold text-blue-300 uppercase tracking-wider flex items-center gap-2">
-                      <PenTool size={14}/> Moderator Signature & Notes
+                  <div className={`border p-5 rounded-2xl space-y-4 ${theme === 'light' ? 'bg-amber-50/90 border-blue-300' : 'bg-blue-950/20 border-blue-500/20'}`}>
+                    <h4 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-2 ${theme === 'light' ? 'text-blue-900' : 'text-blue-300'}`}>
+                      <PenTool size={14}/> Moderator Signature & Review Remarks
                     </h4>
 
                     <input 
                       id={`mod-notes-${b.id}`} 
-                      placeholder="Add moderator remarks / instructions for admin..." 
-                      className="w-full bg-stone-900 border border-stone-700 p-3 rounded-xl text-xs text-white outline-none focus:border-blue-500" 
+                      placeholder="Add moderator remarks / review notes..." 
+                      className={`w-full p-3 rounded-xl text-xs outline-none border transition-colors ${theme === 'light' ? 'bg-white border-amber-300 text-amber-950 focus:border-blue-500' : 'bg-stone-900 border-stone-700 text-white focus:border-blue-500'}`} 
                     />
 
-                    <div className="h-28 border-2 border-dashed border-stone-700 rounded-xl relative bg-stone-900 overflow-hidden">
+                    <div className="h-28 border-2 border-dashed border-blue-500/40 rounded-xl relative bg-stone-900 overflow-hidden">
                       <SignatureCanvas ref={moderatorSigCanvas} penColor="#3b82f6" canvasProps={{className: 'w-full h-full absolute inset-0'}} />
                       <button type="button" onClick={() => moderatorSigCanvas.current?.clear()} className="absolute bottom-2 right-2 text-[9px] font-bold text-stone-400 bg-stone-800 px-2.5 py-1 rounded-md border border-stone-700">Clear</button>
                     </div>
 
-                    <div className="flex gap-3 justify-end pt-2">
-                      <button onClick={() => handleRejectBooking(b.id)} className="px-5 py-2.5 rounded-xl text-xs font-bold text-red-400 bg-red-500/10 border border-red-500/30 hover:bg-red-500/20">
+                    <div className="flex flex-wrap gap-3 justify-end pt-2">
+                      <button onClick={() => handleRejectBooking(b.id)} className="px-4 py-2.5 rounded-xl text-xs font-bold text-red-500 bg-red-500/10 border border-red-500/30 hover:bg-red-500/20">
                         Reject
                       </button>
 
-                      <button onClick={() => handleModeratorApprove(b)} className="px-6 py-2.5 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-600/30 flex items-center gap-2">
-                        <CheckCircle2 size={16}/> Approve & Forward to Admin
+                      <button onClick={() => handleModeratorApprove(b)} className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md flex items-center gap-2">
+                        <UserCheck size={16}/> Forward to Admin (Tier-2)
+                      </button>
+
+                      <button onClick={() => handleModeratorDirectFinalApprove(b)} className="px-6 py-2.5 rounded-xl text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/30 flex items-center gap-2">
+                        <CheckCircle2 size={16}/> Final Approve & Issue Gate Pass
                       </button>
                     </div>
                   </div>
@@ -1487,9 +1605,9 @@ export default function RequisitionPortal() {
               ))}
 
               {pendingModeratorBookings.length === 0 && (
-                <div className="text-center py-20 bg-stone-950/60 rounded-3xl border border-dashed border-stone-800">
-                  <UserCheck size={36} className="mx-auto text-stone-600 mb-3"/>
-                  <p className="text-stone-400 font-bold text-sm">No pending moderator requisitions.</p>
+                <div className={`text-center py-20 rounded-3xl border border-dashed ${theme === 'light' ? 'bg-amber-100/60 border-amber-300 text-amber-900/60' : 'bg-stone-950/60 border-stone-800 text-stone-400'}`}>
+                  <UserCheck size={36} className="mx-auto mb-3 opacity-60 text-blue-500"/>
+                  <p className="font-bold text-sm">No pending moderator requisitions.</p>
                 </div>
               )}
             </div>
@@ -1497,74 +1615,201 @@ export default function RequisitionPortal() {
         )}
 
         {/* ====================================================================== */}
-        {/* TAB 7: ADMIN CONSOLE & VENUE SEATING CAPACITY / TECH MANAGER */}
+        {/* TAB 7: ADMIN CONSOLE & ACCESS CONTROL / ROLE MANAGER */}
         {/* ====================================================================== */}
         {activeTab === 'admin' && userRole === 'admin' && (
           <div className="animate-fade-in-up space-y-8 max-w-5xl mx-auto">
             
-            {/* Section 1: Final Approval Stamping Console */}
-            <div className="bg-emerald-950/40 border border-emerald-500/30 rounded-3xl p-6 text-stone-100 shadow-xl">
-              <h2 className="text-xl font-black uppercase tracking-tight text-emerald-300 flex items-center gap-2">
-                <ShieldCheck size={22} className="text-emerald-400"/> Tier-2 Admin Final Stamping & Seal Console
+            {/* Section 1: USER ACCESS CONTROL & RIGHTS MANAGEMENT */}
+            <div className={`rounded-3xl p-6 sm:p-8 shadow-xl border ${theme === 'light' ? 'bg-gradient-to-br from-amber-100/90 via-amber-50 to-orange-100/80 border-amber-300 text-amber-950' : 'bg-stone-950/90 border-stone-800 text-white'}`}>
+              <div className="border-b border-amber-500/20 pb-4 mb-6">
+                <div className="flex items-center gap-2">
+                  <span className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-2 rounded-xl shadow-md">
+                    <ShieldCheck size={20} />
+                  </span>
+                  <div>
+                    <h3 className={`text-lg font-black uppercase tracking-tight ${theme === 'light' ? 'text-amber-950' : 'text-white'}`}>
+                      User Access Control & Rights Management
+                    </h3>
+                    <p className={`text-xs font-semibold ${theme === 'light' ? 'text-amber-900/70' : 'text-stone-400'}`}>
+                      Assign Outlook user IDs as Admin, Moderator, or Faculty. Manage role rights dynamically.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Add New Outlook User Form */}
+              <form onSubmit={handleAddUserRole} className={`p-5 rounded-2xl border mb-6 ${theme === 'light' ? 'bg-white/90 border-amber-200 shadow-sm' : 'bg-stone-900/80 border-stone-800'}`}>
+                <h4 className={`text-xs font-black uppercase tracking-wider mb-3 ${theme === 'light' ? 'text-amber-950' : 'text-stone-200'}`}>
+                  Grant / Assign New Role Rights
+                </h4>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className={`text-[10px] font-bold uppercase block mb-1 ${theme === 'light' ? 'text-amber-900/70' : 'text-stone-400'}`}>Outlook Email</label>
+                    <input 
+                      type="email" 
+                      value={newUserEmailInput} 
+                      onChange={(e) => setNewUserEmailInput(e.target.value)} 
+                      placeholder="e.g. user@vsit.edu.in" 
+                      className={`w-full p-2.5 rounded-xl text-xs outline-none border font-semibold ${theme === 'light' ? 'bg-amber-50 border-amber-300 text-amber-950 focus:border-amber-500' : 'bg-stone-950 border-stone-700 text-white focus:border-orange-500'}`}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className={`text-[10px] font-bold uppercase block mb-1 ${theme === 'light' ? 'text-amber-900/70' : 'text-stone-400'}`}>Full Name / Designation</label>
+                    <input 
+                      type="text" 
+                      value={newUserNameInput} 
+                      onChange={(e) => setNewUserNameInput(e.target.value)} 
+                      placeholder="e.g. Dr. Faculty Name" 
+                      className={`w-full p-2.5 rounded-xl text-xs outline-none border font-semibold ${theme === 'light' ? 'bg-amber-50 border-amber-300 text-amber-950 focus:border-amber-500' : 'bg-stone-950 border-stone-700 text-white focus:border-orange-500'}`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={`text-[10px] font-bold uppercase block mb-1 ${theme === 'light' ? 'text-amber-900/70' : 'text-stone-400'}`}>Assigned Role</label>
+                    <select 
+                      value={newUserRoleInput} 
+                      onChange={(e) => setNewUserRoleInput(e.target.value)} 
+                      className={`w-full p-2.5 rounded-xl text-xs font-bold outline-none border ${theme === 'light' ? 'bg-amber-50 border-amber-300 text-amber-950' : 'bg-stone-950 border-stone-700 text-white'}`}
+                    >
+                      <option value="admin">Admin (Full Control)</option>
+                      <option value="moderator">Moderator (Review & Approve)</option>
+                      <option value="faculty">Faculty (Standard Booking)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <button 
+                  type="submit" 
+                  className="mt-3 w-full py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-2"
+                >
+                  <Plus size={16}/> Grant Role Rights to Outlook User
+                </button>
+              </form>
+
+              {/* Registered Users Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className={`border-b ${theme === 'light' ? 'border-amber-300/80 text-amber-950' : 'border-stone-800 text-stone-400'}`}>
+                      <th className="pb-3 font-black uppercase tracking-wider">User / Outlook ID</th>
+                      <th className="pb-3 font-black uppercase tracking-wider">Role Status</th>
+                      <th className="pb-3 font-black uppercase tracking-wider text-right">Change Rights</th>
+                    </tr>
+                  </thead>
+                  <tbody className={`divide-y ${theme === 'light' ? 'divide-amber-200' : 'divide-stone-800/80'}`}>
+                    {Object.entries(userRolesRegistry).map(([email, user]) => (
+                      <tr key={email} className="hover:bg-amber-500/5 transition-colors">
+                        <td className="py-3">
+                          <span className={`font-bold block ${theme === 'light' ? 'text-amber-950' : 'text-white'}`}>{user.name || email}</span>
+                          <span className={`text-[10px] ${theme === 'light' ? 'text-amber-900/60' : 'text-stone-500'}`}>{email}</span>
+                        </td>
+                        <td className="py-3">
+                          <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border ${
+                            user.role === 'admin' 
+                              ? 'bg-emerald-500/20 text-emerald-600 border-emerald-500/30' 
+                              : user.role === 'moderator'
+                              ? 'bg-blue-500/20 text-blue-600 border-blue-500/30'
+                              : 'bg-orange-500/20 text-orange-600 border-orange-500/30'
+                          }`}>
+                            {user.role}
+                          </span>
+                        </td>
+                        <td className="py-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                            {user.role !== 'admin' && (
+                              <button onClick={() => handleUpdateRole(email, 'admin')} className="text-[10px] font-bold px-2 py-1 bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 rounded-lg hover:bg-emerald-500/20">
+                                Make Admin
+                              </button>
+                            )}
+                            {user.role !== 'moderator' && (
+                              <button onClick={() => handleUpdateRole(email, 'moderator')} className="text-[10px] font-bold px-2 py-1 bg-blue-500/10 text-blue-600 border border-blue-500/30 rounded-lg hover:bg-blue-500/20">
+                                Make Mod
+                              </button>
+                            )}
+                            {user.role !== 'faculty' && (
+                              <button onClick={() => handleUpdateRole(email, 'faculty')} className="text-[10px] font-bold px-2 py-1 bg-amber-500/10 text-amber-600 border border-amber-500/30 rounded-lg hover:bg-amber-500/20">
+                                Set Faculty
+                              </button>
+                            )}
+                            <button onClick={() => handleRemoveRole(email)} className="text-[10px] font-bold p-1 text-red-500 hover:bg-red-500/10 rounded-lg">
+                              <Trash2 size={13}/>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Section 2: Final Approval Stamping Console */}
+            <div className={`border rounded-3xl p-6 shadow-xl ${theme === 'light' ? 'bg-amber-100/90 border-emerald-400 text-amber-950' : 'bg-emerald-950/40 border-emerald-500/30 text-stone-100'}`}>
+              <h2 className={`text-xl font-black uppercase tracking-tight flex items-center gap-2 ${theme === 'light' ? 'text-emerald-950' : 'text-emerald-300'}`}>
+                <ShieldCheck size={22} className="text-emerald-500"/> Tier-2 Admin Final Stamping & Seal Console
               </h2>
-              <p className="text-xs text-emerald-200/80 mt-1">
+              <p className={`text-xs mt-1 ${theme === 'light' ? 'text-emerald-900/80' : 'text-emerald-200/80'}`}>
                 Final approval console for Vidyalankar Dnyanpeeth Trust. Review moderator notes, apply Admin Digital Signatures, and affix the Official Date Stamp.
               </p>
             </div>
 
             <div className="space-y-4">
               {pendingAdminBookings.map((b) => (
-                <div key={b.id} className="bg-stone-950/80 border border-stone-800 rounded-3xl p-6 shadow-xl space-y-6">
+                <div key={b.id} className={`border rounded-3xl p-6 shadow-xl space-y-6 ${theme === 'light' ? 'bg-amber-50/90 border-amber-300' : 'bg-stone-950/80 border-stone-800'}`}>
                   
-                  <div className="flex flex-wrap items-start justify-between gap-4 border-b border-stone-800 pb-4">
+                  <div className="flex flex-wrap items-start justify-between gap-4 border-b border-amber-500/20 pb-4">
                     <div>
-                      <span className="bg-amber-500/20 text-amber-400 px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider mb-2 inline-block">
+                      <span className="bg-amber-500/20 text-amber-600 px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider mb-2 inline-block">
                         {b.institute} - Pending Final Admin Seal
                       </span>
-                      <h3 className="text-lg font-black text-white">{b.event_name}</h3>
-                      <p className="text-xs text-stone-400 mt-0.5">Faculty: <strong>{b.coordinator}</strong> | Venue: <strong className="text-orange-400">{b.venue}</strong></p>
+                      <h3 className={`text-lg font-black ${theme === 'light' ? 'text-amber-950' : 'text-white'}`}>{b.event_name}</h3>
+                      <p className={`text-xs mt-0.5 ${theme === 'light' ? 'text-amber-900/70' : 'text-stone-400'}`}>Faculty: <strong>{b.coordinator}</strong> | Venue: <strong className="text-orange-500">{b.venue}</strong></p>
                     </div>
 
-                    <span className="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1.5">
+                    <span className="bg-blue-500/20 text-blue-600 border border-blue-500/30 px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1.5">
                       <UserCheck size={14}/> Verified by Moderator ({b.moderator_name})
                     </span>
                   </div>
 
                   {b.moderator_notes && (
-                    <div className="bg-blue-950/30 border border-blue-500/20 p-4 rounded-2xl text-xs text-blue-200">
+                    <div className={`p-4 rounded-2xl text-xs border ${theme === 'light' ? 'bg-blue-50 border-blue-200 text-blue-950' : 'bg-blue-950/30 border-blue-500/20 text-blue-200'}`}>
                       <strong>Moderator Remarks:</strong> {b.moderator_notes}
                     </div>
                   )}
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {b.signature_url && (
-                      <div className="bg-stone-900/60 p-3 rounded-2xl border border-stone-800">
-                        <span className="text-[10px] font-bold text-stone-400 uppercase block mb-2">1. Faculty Signature</span>
-                        <img src={b.signature_url} alt="Faculty Sig" className="h-10 w-auto bg-white/10 p-1 rounded-lg border border-white/20"/>
+                      <div className={`p-3 rounded-2xl border ${theme === 'light' ? 'bg-white border-amber-200' : 'bg-stone-900/60 border-stone-800'}`}>
+                        <span className={`text-[10px] font-bold uppercase block mb-2 ${theme === 'light' ? 'text-amber-900/70' : 'text-stone-400'}`}>1. Faculty Signature</span>
+                        <img src={b.signature_url} alt="Faculty Sig" className="h-10 w-auto bg-white/80 p-1 rounded-lg border border-amber-300"/>
                       </div>
                     )}
 
                     {b.moderator_signature_url && (
-                      <div className="bg-stone-900/60 p-3 rounded-2xl border border-stone-800">
-                        <span className="text-[10px] font-bold text-stone-400 uppercase block mb-2">2. Moderator Signature</span>
-                        <img src={b.moderator_signature_url} alt="Moderator Sig" className="h-10 w-auto bg-white/10 p-1 rounded-lg border border-white/20"/>
+                      <div className={`p-3 rounded-2xl border ${theme === 'light' ? 'bg-white border-amber-200' : 'bg-stone-900/60 border-stone-800'}`}>
+                        <span className={`text-[10px] font-bold uppercase block mb-2 ${theme === 'light' ? 'text-amber-900/70' : 'text-stone-400'}`}>2. Moderator Signature</span>
+                        <img src={b.moderator_signature_url} alt="Moderator Sig" className="h-10 w-auto bg-white/80 p-1 rounded-lg border border-amber-300"/>
                       </div>
                     )}
                   </div>
 
-                  <div className="bg-emerald-950/20 border border-emerald-500/20 p-5 rounded-2xl space-y-4">
-                    <h4 className="text-xs font-bold text-emerald-300 uppercase tracking-wider flex items-center justify-between">
+                  <div className={`border p-5 rounded-2xl space-y-4 ${theme === 'light' ? 'bg-emerald-50 border-emerald-300' : 'bg-emerald-950/20 border-emerald-500/20'}`}>
+                    <h4 className={`text-xs font-bold uppercase tracking-wider flex items-center justify-between ${theme === 'light' ? 'text-emerald-950' : 'text-emerald-300'}`}>
                       <span className="flex items-center gap-2"><PenTool size={14}/> 3. Admin Approval Signature & Official Stamp</span>
-                      <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/20 px-2 py-0.5 rounded-md">LIVE STAMPING ACTIVE</span>
+                      <span className="text-[10px] text-emerald-600 font-bold bg-emerald-500/20 px-2 py-0.5 rounded-md">LIVE STAMPING ACTIVE</span>
                     </h4>
 
-                    <div className="h-28 border-2 border-dashed border-stone-700 rounded-xl relative bg-stone-900 overflow-hidden">
+                    <div className="h-28 border-2 border-dashed border-emerald-500/40 rounded-xl relative bg-stone-900 overflow-hidden">
                       <SignatureCanvas ref={adminSigCanvas} penColor="#10b981" canvasProps={{className: 'w-full h-full absolute inset-0'}} />
                       <button type="button" onClick={() => adminSigCanvas.current?.clear()} className="absolute bottom-2 right-2 text-[9px] font-bold text-stone-400 bg-stone-800 px-2.5 py-1 rounded-md border border-stone-700">Clear</button>
                     </div>
 
                     <div className="flex gap-3 justify-end pt-2">
-                      <button onClick={() => handleRejectBooking(b.id)} className="px-5 py-2.5 rounded-xl text-xs font-bold text-red-400 bg-red-500/10 border border-red-500/30 hover:bg-red-500/20">
+                      <button onClick={() => handleRejectBooking(b.id)} className="px-5 py-2.5 rounded-xl text-xs font-bold text-red-500 bg-red-500/10 border border-red-500/30 hover:bg-red-500/20">
                         Reject
                       </button>
 
@@ -1577,20 +1822,20 @@ export default function RequisitionPortal() {
               ))}
 
               {pendingAdminBookings.length === 0 && (
-                <div className="text-center py-10 bg-stone-950/60 rounded-3xl border border-dashed border-stone-800">
-                  <ShieldCheck size={32} className="mx-auto text-stone-600 mb-2"/>
-                  <p className="text-stone-400 font-bold text-xs">No requisitions awaiting admin final approval.</p>
+                <div className={`text-center py-10 rounded-3xl border border-dashed ${theme === 'light' ? 'bg-amber-100/60 border-amber-300 text-amber-900/60' : 'bg-stone-950/60 border-stone-800 text-stone-400'}`}>
+                  <ShieldCheck size={32} className="mx-auto mb-2 opacity-60 text-emerald-500"/>
+                  <p className="font-bold text-xs">No requisitions awaiting admin final approval.</p>
                 </div>
               )}
             </div>
 
-            {/* Section 2: ADMIN VENUE CAPACITY & TECH SPECS MANAGER */}
-            <div className="bg-stone-950/80 border border-stone-800 rounded-3xl p-6 sm:p-8 shadow-xl space-y-6">
-              <div className="border-b border-stone-800 pb-4">
-                <h3 className="text-base font-black text-amber-400 uppercase tracking-tight flex items-center gap-2">
+            {/* Section 3: ADMIN VENUE CAPACITY & TECH SPECS MANAGER */}
+            <div className={`border rounded-3xl p-6 sm:p-8 shadow-xl space-y-6 ${theme === 'light' ? 'bg-amber-100/90 border-amber-300' : 'bg-stone-950/80 border-stone-800'}`}>
+              <div className="border-b border-amber-500/20 pb-4">
+                <h3 className={`text-base font-black uppercase tracking-tight flex items-center gap-2 ${theme === 'light' ? 'text-amber-950' : 'text-amber-400'}`}>
                   <Sliders size={20}/> Admin Control: Venue Seating Capacity & Installed Tech Manager
                 </h3>
-                <p className="text-xs text-stone-400 mt-1">
+                <p className={`text-xs mt-1 ${theme === 'light' ? 'text-amber-900/70' : 'text-stone-400'}`}>
                   Dynamically adjust seating capacities, add or remove installed AV tech specs, or set maintenance status for any Vidyalankar Dnyanpeeth Trust venue.
                 </p>
               </div>
@@ -1599,7 +1844,7 @@ export default function RequisitionPortal() {
                 
                 {/* Select Venue to Edit */}
                 <div>
-                  <label className="text-[11px] font-bold text-stone-400 uppercase block mb-2">Select Venue to Edit</label>
+                  <label className={`text-[11px] font-bold uppercase block mb-2 ${theme === 'light' ? 'text-amber-900/70' : 'text-stone-400'}`}>Select Venue to Edit</label>
                   <select 
                     value={adminSelectedVenueId} 
                     onChange={(e) => {
@@ -1610,7 +1855,7 @@ export default function RequisitionPortal() {
                         setAdminStatusInput(target.status);
                       }
                     }} 
-                    className="w-full bg-stone-900 border border-stone-700 p-3 rounded-xl text-xs font-bold text-white outline-none"
+                    className={`w-full p-3 rounded-xl text-xs font-bold outline-none border ${theme === 'light' ? 'bg-amber-50 border-amber-300 text-amber-950' : 'bg-stone-900 border-stone-700 text-white'}`}
                   >
                     {venues.map(v => (
                       <option key={v.id} value={v.id}>{v.name} ({v.capacity} seats)</option>
@@ -1620,21 +1865,21 @@ export default function RequisitionPortal() {
                   {/* Seating Capacity & Status Inputs */}
                   <div className="grid grid-cols-2 gap-3 mt-4">
                     <div>
-                      <label className="text-[10px] font-bold text-stone-400 uppercase block mb-1">Seating Capacity</label>
+                      <label className={`text-[10px] font-bold uppercase block mb-1 ${theme === 'light' ? 'text-amber-900/70' : 'text-stone-400'}`}>Seating Capacity</label>
                       <input 
                         type="number" 
                         value={adminCapacityInput} 
                         onChange={(e) => setAdminCapacityInput(e.target.value)} 
-                        className="w-full bg-stone-900 border border-stone-700 p-3 rounded-xl text-xs font-bold text-white outline-none" 
+                        className={`w-full p-3 rounded-xl text-xs font-bold outline-none border ${theme === 'light' ? 'bg-amber-50 border-amber-300 text-amber-950' : 'bg-stone-900 border-stone-700 text-white'}`} 
                       />
                     </div>
 
                     <div>
-                      <label className="text-[10px] font-bold text-stone-400 uppercase block mb-1">Venue Status</label>
+                      <label className={`text-[10px] font-bold uppercase block mb-1 ${theme === 'light' ? 'text-amber-900/70' : 'text-stone-400'}`}>Venue Status</label>
                       <select 
                         value={adminStatusInput} 
                         onChange={(e) => setAdminStatusInput(e.target.value)} 
-                        className="w-full bg-stone-900 border border-stone-700 p-3 rounded-xl text-xs font-bold text-white outline-none"
+                        className={`w-full p-3 rounded-xl text-xs font-bold outline-none border ${theme === 'light' ? 'bg-amber-50 border-amber-300 text-amber-950' : 'bg-stone-900 border-stone-700 text-white'}`}
                       >
                         <option value="Available">Available</option>
                         <option value="Under Maintenance">Under Maintenance</option>
@@ -1645,7 +1890,7 @@ export default function RequisitionPortal() {
 
                   <button 
                     onClick={handleUpdateAdminVenue} 
-                    className="mt-4 w-full py-3 bg-amber-500 hover:bg-amber-600 text-stone-950 font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-2"
+                    className="mt-4 w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-2"
                   >
                     <Check size={16}/> Save Capacity & Status Updates
                   </button>
@@ -1981,6 +2226,112 @@ export default function RequisitionPortal() {
             <span className="hidden sm:inline">Ask AI Assistant</span>
           </button>
         </div>
+
+        {/* ====================================================================== */}
+        {/* REQUIREMENT MODIFICATION MODAL (MODERATOR & ADMIN LOGISTICS EDITOR) */}
+        {/* ====================================================================== */}
+        {modRequirementModalOpen && targetBookingForReqEdit && (
+          <div className="fixed inset-0 z-100 bg-stone-950/80 backdrop-blur-md flex items-center justify-center p-4">
+            <div className={`border rounded-3xl p-6 sm:p-8 max-w-xl w-full shadow-2xl space-y-6 animate-fade-in-up ${theme === 'light' ? 'bg-amber-50 border-amber-300 text-amber-950' : 'bg-stone-900 border-stone-800 text-white'}`}>
+              
+              <div className="flex items-start justify-between gap-4 border-b border-amber-500/20 pb-4">
+                <div>
+                  <span className="bg-amber-500/20 text-amber-600 px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider mb-2 inline-block">
+                    {targetBookingForReqEdit.institute} - Requisition #{targetBookingForReqEdit.id}
+                  </span>
+                  <h3 className={`text-xl font-black ${theme === 'light' ? 'text-amber-950' : 'text-white'}`}>
+                    Modify Logistics & Technical Requirements
+                  </h3>
+                  <p className={`text-xs mt-1 ${theme === 'light' ? 'text-amber-900/70' : 'text-stone-400'}`}>
+                    Adjust microphones, projector, lighting, or catering. Recorded reasons will be sealed onto the Gate Pass.
+                  </p>
+                </div>
+
+                <button onClick={() => setModRequirementModalOpen(false)} className={`p-2 rounded-xl border ${theme === 'light' ? 'bg-amber-200/80 border-amber-300 text-amber-950' : 'bg-stone-800 border-stone-700 text-stone-300'}`}>
+                  ✕
+                </button>
+              </div>
+
+              {/* Requirement Items Checklist Editor */}
+              <div className="space-y-3 max-h-60 overflow-y-auto custom-scrollbar pr-1">
+                {[
+                  "Collar Microphone", "Handheld Wireless Mics", "Laser Projector & Screen",
+                  "Stage Focus & Ambient Lighting", "Traditional Stage Lamp", "VIP High Tea & Refreshments",
+                  "4K Video Recording", "Live Streaming Setup", "LED Video Backdrop Wall"
+                ].map(item => {
+                  const currentVal = modEditedRequirements[item];
+                  const isChecked = !!currentVal;
+                  return (
+                    <div key={item} className={`flex items-center justify-between p-3 rounded-xl border ${theme === 'light' ? 'bg-white border-amber-200' : 'bg-stone-950 border-stone-800'}`}>
+                      <label className="flex items-center gap-2.5 text-xs font-bold cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={isChecked} 
+                          onChange={(e) => {
+                            const updated = { ...modEditedRequirements };
+                            if (e.target.checked) {
+                              updated[item] = "Allocated & Verified by Moderator";
+                            } else {
+                              delete updated[item];
+                            }
+                            setModEditedRequirements(updated);
+                          }}
+                          className="w-4 h-4 rounded text-orange-500"
+                        />
+                        <span>{item}</span>
+                      </label>
+
+                      {isChecked && (
+                        <input 
+                          type="text" 
+                          value={currentVal === true ? "Allocated" : currentVal}
+                          onChange={(e) => {
+                            setModEditedRequirements({ ...modEditedRequirements, [item]: e.target.value });
+                          }}
+                          placeholder="Specification / Quantity"
+                          className={`text-xs px-2.5 py-1 rounded-lg border outline-none font-semibold w-44 ${theme === 'light' ? 'bg-amber-50 border-amber-300 text-amber-950' : 'bg-stone-900 border-stone-700 text-white'}`}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Mandatory Reason Input */}
+              <div className="space-y-1.5">
+                <label className={`text-xs font-black uppercase tracking-wider block ${theme === 'light' ? 'text-amber-950' : 'text-stone-300'}`}>
+                  Reason for Requirement Modification (Mandatory):
+                </label>
+                <textarea 
+                  rows={3}
+                  value={modRequirementReason}
+                  onChange={(e) => setModRequirementReason(e.target.value)}
+                  placeholder="e.g. Adjusted wireless microphones from 2 to 4 as per expected audience size; verified laser projector availability."
+                  className={`w-full p-3 rounded-xl text-xs outline-none border custom-scrollbar font-medium ${theme === 'light' ? 'bg-white border-amber-300 text-amber-950 focus:border-amber-500' : 'bg-stone-950 border-stone-700 text-white focus:border-orange-500'}`}
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-amber-500/20">
+                <button 
+                  type="button" 
+                  onClick={() => setModRequirementModalOpen(false)}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-bold border ${theme === 'light' ? 'bg-amber-200/80 border-amber-300 text-amber-950 hover:bg-amber-300' : 'bg-stone-800 border-stone-700 text-stone-300'}`}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="button" 
+                  onClick={handleSaveReqEditModal}
+                  className="px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider text-white bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/20 flex items-center gap-2"
+                >
+                  <Check size={16}/> Save & Record Modifications
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
 
         {/* ====================================================================== */}
         {/* EVENT DETAILS MODAL (CALENDAR POPOVER) */}

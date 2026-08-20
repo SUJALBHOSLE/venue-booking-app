@@ -90,8 +90,25 @@ export const generateGatePass = (booking, returnBlob = false) => {
     bodyStyles: { fontSize: 8, textColor: [51, 65, 85] }
   });
 
+  // --- MODERATOR REMARKS / MODIFICATION REASON ---
+  finalY = doc.lastAutoTable?.finalY || (finalY + 35);
+  if (booking.moderator_notes || booking.modification_reason) {
+    finalY += 6;
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 58, 138);
+    doc.text("Moderator Review Remarks & Modification Notes:", 14, finalY);
+    
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(71, 85, 105);
+    const remarks = booking.moderator_notes || booking.modification_reason || "Approved according to trust guidelines.";
+    doc.text(doc.splitTextToSize(remarks, pageWidth - 28), 14, finalY + 4);
+    finalY += 10;
+  }
+
   // --- MULTI-TIER SIGNATURE & OFFICIAL STAMP SECTION ---
-  finalY = (doc.lastAutoTable?.finalY || (finalY + 35)) + 12;
+  finalY += 8;
   if (finalY > 230) { doc.addPage(); finalY = 20; }
 
   doc.setFontSize(9);

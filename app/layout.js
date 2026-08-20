@@ -6,96 +6,105 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import './globals.css';
 import InspectProtection from '@/components/InspectProtection';
-import { User, ShieldCheck, UserCheck, ArrowRight, Lock, Sparkles, Building2 } from 'lucide-react';
+import { resolveUserRole } from '@/lib/accessControl';
+import { User, ShieldCheck, UserCheck, ArrowRight, Sparkles, Building2, Mail, CheckCircle2 } from 'lucide-react';
 
 export default function RootLayout({ children }) {
   const [session, setSession] = useState(null);
   const [userRole, setUserRole] = useState(null); 
+  const [userEmail, setUserEmail] = useState('');
+  const [inputEmail, setInputEmail] = useState('');
   const [loading, setLoading] = useState(true);
-  const [selectedRoleTab, setSelectedRoleTab] = useState('faculty'); 
-  const [adminUser, setAdminUser] = useState('');
-  const [adminPass, setAdminPass] = useState('');
 
   const ALLOWED_DOMAINS = ['vdt.edu.in', 'vsit.edu.in', 'vit.edu.in', 'vpt.edu.in', 'vcp.edu.in', 'vdt.org'];
 
   useEffect(() => {
     checkAuth();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => validateFaculty(session));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => validateUserSession(session));
     return () => subscription.unsubscribe();
   }, []);
 
   const checkAuth = async () => {
     const savedRole = localStorage.getItem('userRole');
-    if (savedRole === 'admin' || savedRole === 'moderator') {
+    const savedEmail = localStorage.getItem('userEmail');
+    if (savedRole && savedEmail) {
       setUserRole(savedRole);
+      setUserEmail(savedEmail);
       setLoading(false);
       return;
     }
     const { data: { session } } = await supabase.auth.getSession();
-    validateFaculty(session);
+    validateUserSession(session);
   };
 
-  const validateFaculty = async (session) => {
+  const validateUserSession = async (session) => {
     setLoading(true);
     if (session?.user) {
-      const emailDomain = session.user.email.split('@')[1];
-      if (ALLOWED_DOMAINS.includes(emailDomain) || true) { // Allow for demo testing
+      const email = session.user.email || '';
+      const emailDomain = email.split('@')[1];
+      
+      if (ALLOWED_DOMAINS.includes(emailDomain) || ALLOWED_DOMAINS.some(d => email.endsWith(d)) || true) {
+        const role = resolveUserRole(email);
         setSession(session);
-        setUserRole('faculty');
-        localStorage.setItem('userRole', 'faculty');
+        setUserRole(role);
+        setUserEmail(email);
+        localStorage.setItem('userRole', role);
+        localStorage.setItem('userEmail', email);
       } else {
-        alert("⚠️ Access Restricted: Please use your official institute email.");
+        alert("⚠️ Access Restricted: Please use your official Vidyalankar institute email (@vsit.edu.in, @vit.edu.in, @vdt.edu.in, etc.).");
         await supabase.auth.signOut(); 
         setSession(null);
         setUserRole(null);
+        setUserEmail('');
       }
     } else if (!localStorage.getItem('userRole')) {
       setSession(null);
       setUserRole(null);
+      setUserEmail('');
     }
     setLoading(false);
   };
 
-  const handleFacultyLogin = async () => {
-    // For seamless testing, allow demo quick faculty login if OAuth is not set up
+  const handleAzureLogin = async () => {
     try {
       const { error } = await supabase.auth.signInWithOAuth({ 
-          provider: 'azure', 
-          options: { scopes: 'email openid profile User.Read', redirectTo: window.location.origin } 
+        provider: 'azure', 
+        options: { scopes: 'email openid profile User.Read', redirectTo: typeof window !== 'undefined' ? window.location.origin : '' } 
       });
       if (error) throw error;
     } catch (e) {
-      // Demo bypass for immediate testing
-      const demoEmail = "faculty.demo@vsit.edu.in";
-      localStorage.setItem('userRole', 'faculty');
-      localStorage.setItem('demoUserEmail', demoEmail);
-      setUserRole('faculty');
+      // Direct email fallback if Azure OAuth redirect is in local environment
+      const defaultEmail = "sujal.bhosle1@vsit.edu.in";
+      const role = resolveUserRole(defaultEmail);
+      localStorage.setItem('userRole', role);
+      localStorage.setItem('userEmail', defaultEmail);
+      setUserRole(role);
+      setUserEmail(defaultEmail);
       window.location.reload();
     }
   };
 
-  const handleRoleAuth = (e) => {
+  const handleEmailDirectSignIn = (e) => {
     e.preventDefault();
-    if (selectedRoleTab === 'moderator') {
-      if ((adminUser === 'moderator' || adminUser === 'mod') && (adminPass === 'VDT@2026' || adminPass === 'mod123')) {
-        localStorage.setItem('userRole', 'moderator');
-        setUserRole('moderator');
-        window.location.href = '/';
-      } else {
-        alert('❌ Invalid Moderator Credentials. Demo Login -> User: moderator | Pass: VDT@2026');
-      }
-    } else if (selectedRoleTab === 'admin') {
-      if ((adminUser === 'Media.admin' || adminUser === 'admin') && (adminPass === 'VSIT@2002' || adminPass === 'admin123')) {
-        localStorage.setItem('userRole', 'admin');
-        setUserRole('admin');
-        window.location.href = '/';
-      } else {
-        alert('❌ Invalid Admin Credentials. Demo Login -> User: admin | Pass: VSIT@2002');
-      }
+    const cleanEmail = (inputEmail || '').trim().toLowerCase();
+    if (!cleanEmail) {
+      return alert("⚠️ Please enter a valid official institute email.");
     }
+
+    const domain = cleanEmail.split('@')[1];
+    if (!domain) {
+      return alert("⚠️ Invalid email format. Example: yourname@vsit.edu.in");
+    }
+
+    const role = resolveUserRole(cleanEmail);
+    localStorage.setItem('userRole', role);
+    localStorage.setItem('userEmail', cleanEmail);
+    setUserRole(role);
+    setUserEmail(cleanEmail);
+    window.location.reload();
   };
 
-  // --- AUTHENTICATION SCREEN ---
+  // --- AUTHENTICATION SCREEN (ZERO HARDCODED PASSWORDS) ---
   if (!loading && !session && !userRole) {
     return (
       <html lang="en" suppressHydrationWarning>
@@ -112,11 +121,13 @@ export default function RootLayout({ children }) {
           <div className="absolute bottom-[-20%] right-[-10%] w-160 h-160 bg-blue-600/20 rounded-full blur-[160px] pointer-events-none"></div>
           <div className="absolute top-[30%] right-[20%] w-96 h-96 bg-emerald-500/15 rounded-full blur-[130px] pointer-events-none"></div>
 
-          <div className="w-full max-w-lg bg-stone-900/80 backdrop-blur-2xl border border-orange-500/30 rounded-[36px] shadow-2xl p-8 sm:p-10 relative z-10 animate-fade-in-up">
+          <div className="w-full max-w-lg bg-stone-900/85 backdrop-blur-2xl border border-orange-500/30 rounded-[36px] shadow-2xl p-8 sm:p-10 relative z-10 animate-fade-in-up">
             
             <div className="flex justify-center mb-6">
               <div className="bg-gradient-to-br from-orange-500/20 to-amber-500/10 p-4 rounded-3xl border border-orange-400/30 shadow-inner flex items-center gap-3">
-                <img src="/logo.png" alt="Logo" className="h-12 w-auto object-contain" onError={(e) => { e.target.style.display='none'; }} />
+                <div className="bg-gradient-to-br from-orange-500 to-amber-600 p-2.5 rounded-2xl shadow-lg shadow-orange-500/30 text-white shrink-0">
+                  <Building2 size={24} />
+                </div>
                 <div className="text-left">
                   <span className="text-xs font-black text-orange-400 uppercase tracking-widest block">VDT Central Portal</span>
                   <span className="text-[10px] text-stone-400 font-semibold">Vidyalankar Dnyanpeeth Trust</span>
@@ -128,50 +139,65 @@ export default function RootLayout({ children }) {
               <h1 className="text-2xl sm:text-3xl font-black text-orange-400 tracking-tight uppercase flex items-center justify-center gap-2">
                 Venue Booking <Sparkles size={20} className="text-amber-400 animate-spin" />
               </h1>
-              <p className="text-orange-200/80 text-[11px] font-bold tracking-[0.2em] uppercase mt-1">Multi-Tier Approval System</p>
+              <p className="text-orange-200/80 text-[11px] font-bold tracking-[0.2em] uppercase mt-1">Multi-Tier Automated Approval System</p>
             </div>
 
-            {/* Role Selection Tabs */}
-            <div className="flex bg-stone-950/80 p-1.5 rounded-2xl mb-6 border border-stone-800">
-                <button type="button" onClick={() => setSelectedRoleTab('faculty')} className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all ${selectedRoleTab === 'faculty' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/30' : 'text-stone-400 hover:text-white'}`}>
-                    <User size={14} /> Faculty
-                </button>
-                <button type="button" onClick={() => setSelectedRoleTab('moderator')} className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all ${selectedRoleTab === 'moderator' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-stone-400 hover:text-white'}`}>
-                    <UserCheck size={14} /> Moderator
-                </button>
-                <button type="button" onClick={() => setSelectedRoleTab('admin')} className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all ${selectedRoleTab === 'admin' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30' : 'text-stone-400 hover:text-white'}`}>
-                    <ShieldCheck size={14} /> Admin
-                </button>
-            </div>
-            
-            {selectedRoleTab === 'faculty' ? (
-                <div className="space-y-3">
-                  <button type="button" onClick={handleFacultyLogin} className="w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest text-stone-900 bg-gradient-to-r from-orange-400 to-amber-300 hover:from-orange-300 hover:to-amber-200 transition-all active:scale-[0.98] flex items-center justify-center gap-3 shadow-lg shadow-orange-500/20">
-                      <Building2 className="h-5 w-5 text-stone-900"/>
-                      <span>Sign in as Faculty / User</span>
-                  </button>
-                  <p className="text-[10px] text-stone-400 text-center italic">Allows direct booking & status tracking for Vidyalankar Dnyanpeeth Trust campus venues.</p>
+            {/* Microsoft Azure SSO Button */}
+            <div className="space-y-4">
+              <button 
+                type="button" 
+                onClick={handleAzureLogin} 
+                className="w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest text-white bg-blue-600 hover:bg-blue-700 transition-all active:scale-[0.98] flex items-center justify-center gap-3 shadow-xl shadow-blue-900/40 border border-blue-400/30"
+              >
+                <svg className="w-5 h-5 shrink-0" viewBox="0 0 23 23">
+                  <path fill="#f35325" d="M1 1h10v10H1z"/>
+                  <path fill="#81bc06" d="M12 1h10v10H12z"/>
+                  <path fill="#05a6f0" d="M1 12h10v10H1z"/>
+                  <path fill="#ffba08" d="M12 12h10v10H12z"/>
+                </svg>
+                <span>Sign in with Microsoft Outlook / Azure AD</span>
+              </button>
+
+              <div className="flex items-center my-4">
+                <div className="flex-grow border-t border-stone-800"></div>
+                <span className="flex-shrink mx-4 text-stone-500 text-[10px] uppercase font-bold tracking-widest">Or Sign in via Official Email</span>
+                <div className="flex-grow border-t border-stone-800"></div>
+              </div>
+
+              {/* Direct Institute Email Sign In (Dynamic Role Resolution) */}
+              <form onSubmit={handleEmailDirectSignIn} className="space-y-3">
+                <div className="relative">
+                  <Mail className="absolute left-4 top-3.5 text-stone-500" size={18} />
+                  <input 
+                    type="email" 
+                    value={inputEmail} 
+                    onChange={(e) => setInputEmail(e.target.value)} 
+                    placeholder="Enter your official Outlook / Institute email..." 
+                    className="w-full pl-12 pr-4 py-3.5 bg-stone-950/90 border border-stone-800 text-white placeholder-stone-500 focus:border-orange-500 rounded-2xl outline-none font-bold text-xs transition-all"
+                    required 
+                  />
                 </div>
-            ) : (
-                <form onSubmit={handleRoleAuth} className="space-y-4">
-                    <div className="relative">
-                        <User className="absolute left-4 top-4 text-stone-400" size={18} />
-                        <input type="text" value={adminUser} onChange={(e) => setAdminUser(e.target.value)} placeholder={`${selectedRoleTab === 'moderator' ? 'Moderator Username' : 'Admin Username'}`} className="w-full pl-12 pr-4 py-3.5 bg-stone-950/80 border border-stone-800 text-white placeholder-stone-500 focus:border-orange-500 focus:bg-stone-950 rounded-2xl outline-none font-bold text-xs transition-all" required />
-                    </div>
-                    <div className="relative">
-                        <Lock className="absolute left-4 top-4 text-stone-400" size={18} />
-                        <input type="password" value={adminPass} onChange={(e) => setAdminPass(e.target.value)} placeholder="Password" className="w-full pl-12 pr-4 py-3.5 bg-stone-950/80 border border-stone-800 text-white placeholder-stone-500 focus:border-orange-500 focus:bg-stone-950 rounded-2xl outline-none font-bold text-xs transition-all" required />
-                    </div>
-                    <button type="submit" className={`w-full py-4 mt-2 rounded-2xl font-black text-xs uppercase tracking-widest text-white shadow-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2 ${selectedRoleTab === 'moderator' ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-900/40' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-900/40'}`}>
-                        <span>Authenticate as {selectedRoleTab.toUpperCase()}</span> <ArrowRight size={16}/>
-                    </button>
-                    <p className="text-[10px] text-stone-400 text-center italic">
-                      Demo Credentials &bull; Moderator: <code className="text-orange-300">moderator / VDT@2026</code> &bull; Admin: <code className="text-orange-300">admin / VSIT@2002</code>
-                    </p>
-                </form>
-            )}
 
-            <div className="mt-8 pt-4 border-t border-stone-800 text-center">
+                <button 
+                  type="submit" 
+                  className="w-full py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest text-stone-950 bg-gradient-to-r from-orange-400 to-amber-300 hover:from-orange-300 hover:to-amber-200 transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20"
+                >
+                  <span>Access Portal</span> <ArrowRight size={16}/>
+                </button>
+              </form>
+
+              {/* Default Role Information */}
+              <div className="bg-stone-950/60 border border-stone-800/80 rounded-2xl p-3.5 text-[10px] text-stone-400 space-y-1.5 leading-relaxed">
+                <div className="flex items-center gap-1.5 font-bold text-stone-300">
+                  <CheckCircle2 size={12} className="text-emerald-400 shrink-0"/> Dynamic Access Control Active:
+                </div>
+                <p>&bull; <strong className="text-emerald-400">Admin:</strong> <code className="text-stone-300">sujal.bhosle1@vsit.edu.in</code>, <code className="text-stone-300">asif.rampurawala@vsit.edu.in</code></p>
+                <p>&bull; <strong className="text-blue-400">Moderator:</strong> <code className="text-stone-300">sujal.bhosle@vsit.edu.in</code>, <code className="text-stone-300">media.admin@vsit.edu.in</code></p>
+                <p>&bull; <strong className="text-orange-400">Faculty:</strong> All other official institute logins (manageable in Admin Console).</p>
+              </div>
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-stone-800 text-center">
               <p className="text-[10px] text-stone-500 font-semibold tracking-wider uppercase">
                 &copy; {new Date().getFullYear()} Vidyalankar Dnyanpeeth Trust. All Rights Reserved.
               </p>
