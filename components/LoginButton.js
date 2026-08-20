@@ -39,8 +39,20 @@ export default function LoginButton() {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    localStorage.clear();
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.log("Signout error:", e);
+    }
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.clear();
+      window.localStorage.removeItem('userRole');
+      window.localStorage.removeItem('userEmail');
+      // Wipe any lingering cookies
+      document.cookie.split(";").forEach((c) => {
+        document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+      });
+    }
     setUser(null);
     window.location.reload();
   };

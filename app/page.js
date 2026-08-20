@@ -238,8 +238,8 @@ export default function RequisitionPortal() {
   const isExternal = watch("isExternal");
 
   useEffect(() => {
-    const savedRole = localStorage.getItem('userRole') || 'faculty';
-    const savedEmail = localStorage.getItem('userEmail') || 'sujal.bhosle1@vsit.edu.in';
+    const savedRole = (typeof window !== 'undefined' ? (window.sessionStorage.getItem('userRole') || window.localStorage.getItem('userRole')) : null) || 'faculty';
+    const savedEmail = (typeof window !== 'undefined' ? (window.sessionStorage.getItem('userEmail') || window.localStorage.getItem('userEmail')) : null) || 'sujal.bhosle1@vsit.edu.in';
     setUserRole(savedRole);
     setUserEmail(savedEmail);
     setUserRolesRegistry(getUserRolesRegistry());
@@ -293,8 +293,20 @@ export default function RequisitionPortal() {
     return moment(dateString).utcOffset('+05:30').format(format);
   };
 
-  const handleLogout = () => {
-    localStorage.clear();
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.log("Signout error:", e);
+    }
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.clear();
+      window.localStorage.removeItem('userRole');
+      window.localStorage.removeItem('userEmail');
+      document.cookie.split(";").forEach((c) => {
+        document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+      });
+    }
     window.location.reload();
   };
 

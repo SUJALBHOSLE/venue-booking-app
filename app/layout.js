@@ -2,114 +2,179 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable @next/next/no-img-element */
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import './globals.css';
 import InspectProtection from '@/components/InspectProtection';
 import { resolveUserRole } from '@/lib/accessControl';
-import { User, ShieldCheck, UserCheck, ArrowRight, Sparkles, Building2, Mail, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, Sparkles, Building2, Lock, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
+
+const IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 15 Minutes Inactivity Timeout
 
 export default function RootLayout({ children }) {
   const [session, setSession] = useState(null);
   const [userRole, setUserRole] = useState(null); 
   const [userEmail, setUserEmail] = useState('');
-  const [inputEmail, setInputEmail] = useState('');
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState('');
+  const idleTimerRef = useRef(null);
 
   const ALLOWED_DOMAINS = ['vdt.edu.in', 'vsit.edu.in', 'vit.edu.in', 'vpt.edu.in', 'vcp.edu.in', 'vdt.org'];
 
   useEffect(() => {
     checkAuth();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => validateUserSession(session));
-    return () => subscription.unsubscribe();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      validateUserSession(session);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+      clearIdleTimer();
+    };
   }, []);
 
+  // --- IDLE INACTIVITY SESSION TIMEOUT & AUTO-LOGOUT ---
+  useEffect(() => {
+    if (session || userRole) {
+      resetIdleTimer();
+      const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
+      
+      const handleUserActivity = () => {
+        resetIdleTimer();
+      };
+
+      events.forEach(event => window.addEventListener(event, handleUserActivity));
+
+      return () => {
+        events.forEach(event => window.removeEventListener(event, handleUserActivity));
+        clearIdleTimer();
+      };
+    }
+  }, [session, userRole]);
+
+  const clearIdleTimer = () => {
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
+    }
+  };
+
+  const resetIdleTimer = () => {
+    clearIdleTimer();
+    idleTimerRef.current = setTimeout(() => {
+      handleIdleLogout();
+    }, IDLE_TIMEOUT_MS);
+  };
+
+  const handleIdleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.log("Signout note:", e);
+    }
+    // Clean all session data & cookies
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.clear();
+      window.localStorage.removeItem('userRole');
+      window.localStorage.removeItem('userEmail');
+      // Wipe any lingering cookies
+      document.cookie.split(";").forEach((c) => {
+        document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+      });
+    }
+    setSession(null);
+    setUserRole(null);
+    setUserEmail('');
+    alert("⚠️ Security Alert: Your session has expired due to 15 minutes of inactivity. Please sign in again with Microsoft Outlook.");
+    window.location.reload();
+  };
+
   const checkAuth = async () => {
-    const savedRole = localStorage.getItem('userRole');
-    const savedEmail = localStorage.getItem('userEmail');
+    // Check session-only storage
+    const savedRole = typeof window !== 'undefined' ? window.sessionStorage.getItem('userRole') : null;
+    const savedEmail = typeof window !== 'undefined' ? window.sessionStorage.getItem('userEmail') : null;
+    
     if (savedRole && savedEmail) {
       setUserRole(savedRole);
       setUserEmail(savedEmail);
       setLoading(false);
       return;
     }
+
     const { data: { session } } = await supabase.auth.getSession();
     validateUserSession(session);
   };
 
   const validateUserSession = async (session) => {
     setLoading(true);
+    setAuthError('');
+
     if (session?.user) {
-      const email = session.user.email || '';
-      const emailDomain = email.split('@')[1];
+      const email = (session.user.email || '').trim().toLowerCase();
+      const emailDomain = email.split('@')[1] || '';
       
-      if (ALLOWED_DOMAINS.includes(emailDomain) || ALLOWED_DOMAINS.some(d => email.endsWith(d)) || true) {
+      const isAllowedDomain = ALLOWED_DOMAINS.includes(emailDomain) || ALLOWED_DOMAINS.some(d => email.endsWith(d));
+
+      if (isAllowedDomain) {
         const role = resolveUserRole(email);
         setSession(session);
         setUserRole(role);
         setUserEmail(email);
-        localStorage.setItem('userRole', role);
-        localStorage.setItem('userEmail', email);
+        
+        // Save in session-only storage (no persistent login cookies)
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.setItem('userRole', role);
+          window.sessionStorage.setItem('userEmail', email);
+        }
       } else {
-        alert("⚠️ Access Restricted: Please use your official Vidyalankar institute email (@vsit.edu.in, @vit.edu.in, @vdt.edu.in, etc.).");
-        await supabase.auth.signOut(); 
+        const errMsg = `Access Denied: ${email} is not an authorized Vidyalankar institute account. Please use your official Outlook credentials (@vsit.edu.in, @vit.edu.in, @vdt.edu.in).`;
+        setAuthError(errMsg);
+        await supabase.auth.signOut();
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.clear();
+        }
         setSession(null);
         setUserRole(null);
         setUserEmail('');
       }
-    } else if (!localStorage.getItem('userRole')) {
-      setSession(null);
-      setUserRole(null);
-      setUserEmail('');
+    } else {
+      if (typeof window !== 'undefined') {
+        const savedRole = window.sessionStorage.getItem('userRole');
+        if (!savedRole) {
+          setSession(null);
+          setUserRole(null);
+          setUserEmail('');
+        }
+      }
     }
     setLoading(false);
   };
 
-  const handleAzureLogin = async () => {
+  const handleMicrosoftLogin = async () => {
+    setLoading(true);
+    setAuthError('');
     try {
       const { error } = await supabase.auth.signInWithOAuth({ 
         provider: 'azure', 
-        options: { scopes: 'email openid profile User.Read', redirectTo: typeof window !== 'undefined' ? window.location.origin : '' } 
+        options: { 
+          scopes: 'email openid profile User.Read', 
+          redirectTo: typeof window !== 'undefined' ? window.location.origin : '' 
+        } 
       });
       if (error) throw error;
     } catch (e) {
-      // Direct email fallback if Azure OAuth redirect is in local environment
-      const defaultEmail = "sujal.bhosle1@vsit.edu.in";
-      const role = resolveUserRole(defaultEmail);
-      localStorage.setItem('userRole', role);
-      localStorage.setItem('userEmail', defaultEmail);
-      setUserRole(role);
-      setUserEmail(defaultEmail);
-      window.location.reload();
+      console.error("Microsoft OAuth error:", e);
+      setAuthError(e.message || "Failed to initiate Microsoft Authentication. Please ensure Azure OAuth is configured.");
+      setLoading(false);
     }
   };
 
-  const handleEmailDirectSignIn = (e) => {
-    e.preventDefault();
-    const cleanEmail = (inputEmail || '').trim().toLowerCase();
-    if (!cleanEmail) {
-      return alert("⚠️ Please enter a valid official institute email.");
-    }
-
-    const domain = cleanEmail.split('@')[1];
-    if (!domain) {
-      return alert("⚠️ Invalid email format. Example: yourname@vsit.edu.in");
-    }
-
-    const role = resolveUserRole(cleanEmail);
-    localStorage.setItem('userRole', role);
-    localStorage.setItem('userEmail', cleanEmail);
-    setUserRole(role);
-    setUserEmail(cleanEmail);
-    window.location.reload();
-  };
-
-  // --- AUTHENTICATION SCREEN (ZERO HARDCODED PASSWORDS) ---
+  // --- SECURE MICROSOFT AUTHENTICATION ONLY SCREEN ---
   if (!loading && !session && !userRole) {
     return (
       <html lang="en" suppressHydrationWarning>
         <head>
-          <title>Vidyalankar Dnyanpeeth Trust | Requisition Portal</title>
+          <title>Vidyalankar Dnyanpeeth Trust | Microsoft Authentication</title>
           <link rel="manifest" href="/manifest.json" />
           <meta name="theme-color" content="#f97316" />
         </head>
@@ -142,58 +207,43 @@ export default function RootLayout({ children }) {
               <p className="text-orange-200/80 text-[11px] font-bold tracking-[0.2em] uppercase mt-1">Multi-Tier Automated Approval System</p>
             </div>
 
-            {/* Microsoft Azure SSO Button */}
-            <div className="space-y-4">
+            {/* Error Message if any */}
+            {authError && (
+              <div className="mb-5 p-4 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-300 text-xs font-semibold flex items-start gap-2.5 leading-relaxed animate-shake">
+                <AlertCircle size={18} className="shrink-0 text-red-400 mt-0.5" />
+                <span>{authError}</span>
+              </div>
+            )}
+
+            {/* Microsoft Azure OAuth Only Sign In */}
+            <div className="space-y-5">
               <button 
                 type="button" 
-                onClick={handleAzureLogin} 
-                className="w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest text-white bg-blue-600 hover:bg-blue-700 transition-all active:scale-[0.98] flex items-center justify-center gap-3 shadow-xl shadow-blue-900/40 border border-blue-400/30"
+                onClick={handleMicrosoftLogin} 
+                className="w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest text-white bg-blue-600 hover:bg-blue-700 transition-all active:scale-[0.98] flex items-center justify-center gap-3 shadow-xl shadow-blue-900/40 border border-blue-400/30 group"
               >
-                <svg className="w-5 h-5 shrink-0" viewBox="0 0 23 23">
+                <svg className="w-5 h-5 shrink-0 group-hover:scale-110 transition-transform" viewBox="0 0 23 23">
                   <path fill="#f35325" d="M1 1h10v10H1z"/>
                   <path fill="#81bc06" d="M12 1h10v10H12z"/>
                   <path fill="#05a6f0" d="M1 12h10v10H1z"/>
                   <path fill="#ffba08" d="M12 12h10v10H12z"/>
                 </svg>
-                <span>Sign in with Microsoft Outlook / Azure AD</span>
+                <span>Sign in with Microsoft Outlook</span>
               </button>
 
-              <div className="flex items-center my-4">
-                <div className="flex-grow border-t border-stone-800"></div>
-                <span className="flex-shrink mx-4 text-stone-500 text-[10px] uppercase font-bold tracking-widest">Or Sign in via Official Email</span>
-                <div className="flex-grow border-t border-stone-800"></div>
-              </div>
-
-              {/* Direct Institute Email Sign In (Dynamic Role Resolution) */}
-              <form onSubmit={handleEmailDirectSignIn} className="space-y-3">
-                <div className="relative">
-                  <Mail className="absolute left-4 top-3.5 text-stone-500" size={18} />
-                  <input 
-                    type="email" 
-                    value={inputEmail} 
-                    onChange={(e) => setInputEmail(e.target.value)} 
-                    placeholder="Enter your official Outlook / Institute email..." 
-                    className="w-full pl-12 pr-4 py-3.5 bg-stone-950/90 border border-stone-800 text-white placeholder-stone-500 focus:border-orange-500 rounded-2xl outline-none font-bold text-xs transition-all"
-                    required 
-                  />
+              {/* Security & Access Policy Badge */}
+              <div className="bg-stone-950/70 border border-stone-800 rounded-2xl p-4 text-[11px] text-stone-400 space-y-2 leading-relaxed">
+                <div className="flex items-center gap-1.5 font-black text-stone-200 uppercase tracking-wider text-[10px]">
+                  <Lock size={12} className="text-orange-400 shrink-0"/> Mandatory Security & Access Policies:
                 </div>
-
-                <button 
-                  type="submit" 
-                  className="w-full py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest text-stone-950 bg-gradient-to-r from-orange-400 to-amber-300 hover:from-orange-300 hover:to-amber-200 transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20"
-                >
-                  <span>Access Portal</span> <ArrowRight size={16}/>
-                </button>
-              </form>
-
-              {/* Default Role Information */}
-              <div className="bg-stone-950/60 border border-stone-800/80 rounded-2xl p-3.5 text-[10px] text-stone-400 space-y-1.5 leading-relaxed">
-                <div className="flex items-center gap-1.5 font-bold text-stone-300">
-                  <CheckCircle2 size={12} className="text-emerald-400 shrink-0"/> Dynamic Access Control Active:
+                <p>&bull; <strong>Strict Microsoft SSO:</strong> Login is restricted exclusively to authenticated Vidyalankar institute Microsoft accounts.</p>
+                <p>&bull; <strong>Session Isolation:</strong> No persistent login cookies are stored. Sessions expire automatically on tab close or after <strong>15 minutes of idle time</strong>.</p>
+                <p>&bull; <strong>Authorized Role Mapping:</strong></p>
+                <div className="pl-3 text-[10px] space-y-1 font-mono text-stone-300">
+                  <div className="text-emerald-400">&bull; Admin: sujal.bhosle1@vsit.edu.in, asif.rampurawala@vsit.edu.in</div>
+                  <div className="text-blue-400">&bull; Moderator: sujal.bhosle@vsit.edu.in, media.admin@vsit.edu.in</div>
+                  <div className="text-amber-400">&bull; Faculty: All other @vsit.edu.in, @vit.edu.in, @vdt.edu.in logins</div>
                 </div>
-                <p>&bull; <strong className="text-emerald-400">Admin:</strong> <code className="text-stone-300">sujal.bhosle1@vsit.edu.in</code>, <code className="text-stone-300">asif.rampurawala@vsit.edu.in</code></p>
-                <p>&bull; <strong className="text-blue-400">Moderator:</strong> <code className="text-stone-300">sujal.bhosle@vsit.edu.in</code>, <code className="text-stone-300">media.admin@vsit.edu.in</code></p>
-                <p>&bull; <strong className="text-orange-400">Faculty:</strong> All other official institute logins (manageable in Admin Console).</p>
               </div>
             </div>
 
@@ -221,7 +271,7 @@ export default function RootLayout({ children }) {
         {loading && (
           <div className="fixed inset-0 bg-stone-900/80 backdrop-blur-md z-100 flex flex-col items-center justify-center gap-4 text-orange-400">
             <div className="h-12 w-12 rounded-full border-4 border-orange-200 border-t-orange-600 animate-spin"></div>
-            <p className="text-xs font-bold uppercase tracking-widest text-stone-200">Loading Vidyalankar Dnyanpeeth Trust Portal...</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-stone-200">Verifying Microsoft Authentication...</p>
           </div>
         )}
         {children}
