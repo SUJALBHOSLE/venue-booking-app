@@ -1,0 +1,65 @@
+# ==============================================================================
+# VENUE BOOKING APPLICATION - PRODUCTION APACHE / PHP CONFIGURATION
+# 1. Standardized WWW & HTTPS Redirection
+# 2. Inspect Element & Client Protection Security Headers
+# 3. Directory Browsing Protection & Source Code Exposure Defense
+# ==============================================================================
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # 1. Force HTTPS
+    RewriteCond %{HTTPS} off
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+    # 2. Force www. Domain Standardization
+    # Converts https://domain.com -> https://www.domain.com
+    RewriteCond %{HTTP_HOST} !^www\. [NC]
+    RewriteCond %{HTTP_HOST} !^localhost [NC]
+    RewriteCond %{HTTP_HOST} !^127\.0\.0\.1 [NC]
+    RewriteRule ^ https://www.%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+</IfModule>
+
+# ==============================================================================
+# SECURITY HEADERS (PROTECTION FROM INSPECTION, CLICKJACKING & XSS)
+# ==============================================================================
+<IfModule mod_headers.c>
+    # Prevent framing (Clickjacking protection)
+    Header always set X-Frame-Options "DENY"
+
+    # Prevent MIME Sniffing
+    Header always set X-Content-Type-Options "nosniff"
+
+    # Enable XSS Filtering
+    Header always set X-XSS-Protection "1; mode=block"
+
+    # Strict Transport Security (HSTS)
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+
+    # Referrer Policy
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # Feature & Permissions Policy (Disable dangerous browser APIs)
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+
+    # Content Security Policy (CSP) - Mitigates code injection and inspect debugging
+    Header always set Content-Security-Policy "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval';"
+</IfModule>
+
+# ==============================================================================
+# PREVENT DIRECTORY BROWSING & EXPOSURE OF PRIVATE FILES
+# ==============================================================================
+# Disable Directory Listing (Prevents browsing file tree)
+Options -Indexes
+
+# Block access to hidden files (.env, .git, .htaccess)
+<FilesMatch "^\.">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Block direct access to configuration and sensitive files
+<FilesMatch "\.(env|json|config|log|md|sql|sh|lock)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>

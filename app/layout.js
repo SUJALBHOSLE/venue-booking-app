@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import './globals.css';
+import InspectProtection from '@/components/InspectProtection';
 import { User, ShieldCheck, UserCheck, ArrowRight, Lock, Sparkles, Building2 } from 'lucide-react';
 
 export default function RootLayout({ children }) {
@@ -104,6 +105,7 @@ export default function RootLayout({ children }) {
           <meta name="theme-color" content="#f97316" />
         </head>
         <body className="min-h-screen bg-stone-900 flex items-center justify-center p-4 relative overflow-hidden font-sans text-stone-100">
+          <InspectProtection />
           
           {/* Ambient Glowing Background Lights */}
           <div className="absolute top-[-20%] left-[-10%] w-140 h-140 bg-orange-600/30 rounded-full blur-[140px] pointer-events-none animate-pulse"></div>
@@ -189,6 +191,7 @@ export default function RootLayout({ children }) {
         <meta name="theme-color" content="#f97316" />
       </head>
       <body className="bg-amber-50/40 text-stone-900 font-sans min-h-screen">
+        <InspectProtection />
         {loading && (
           <div className="fixed inset-0 bg-stone-900/80 backdrop-blur-md z-100 flex flex-col items-center justify-center gap-4 text-orange-400">
             <div className="h-12 w-12 rounded-full border-4 border-orange-200 border-t-orange-600 animate-spin"></div>
