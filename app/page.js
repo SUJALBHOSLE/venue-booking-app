@@ -188,7 +188,7 @@ export default function RequisitionPortal() {
   const [selectedVenues, setSelectedVenues] = useState([]);
   const [loading, setLoading] = useState(true);
   const [userSessionId, setUserSessionId] = useState('demo-user');
-  const [userEmail, setUserEmail] = useState('sujal.bhosle1@vsit.edu.in');
+  const [userEmail, setUserEmail] = useState('');
   const [selectedEventModal, setSelectedEventModal] = useState(null);
   const [editingBooking, setEditingBooking] = useState(null);
 
@@ -240,21 +240,57 @@ export default function RequisitionPortal() {
   const isExternal = watch("isExternal");
 
   useEffect(() => {
-    const savedRole = (typeof window !== 'undefined' ? (window.sessionStorage.getItem('userRole') || window.localStorage.getItem('userRole')) : null) || 'faculty';
-    const savedEmail = (typeof window !== 'undefined' ? (window.sessionStorage.getItem('userEmail') || window.localStorage.getItem('userEmail')) : null) || 'sujal.bhosle1@vsit.edu.in';
-    setUserRole(savedRole);
-    setUserEmail(savedEmail);
-    setUserRolesRegistry(getUserRolesRegistry());
-    const profiles = getAllUserProfiles();
-    setUserProfiles(profiles);
-    
-    // Auto-prefill coordinator info from profile if exists
-    const myProfile = profiles[savedEmail.toLowerCase()] || getUserProfile(savedEmail);
-    if (myProfile) {
-      if (myProfile.name) setValue('coordinatorName', myProfile.name);
-      if (myProfile.institute) setValue('institute', myProfile.institute);
-    }
+    const syncUserAuthSession = async (liveSession) => {
+      let email = liveSession?.user?.email?.trim()?.toLowerCase() || '';
+      if (!email && typeof window !== 'undefined') {
+        email = (window.sessionStorage.getItem('userEmail') || '').trim().toLowerCase();
+      }
+      if (!email) {
+        try {
+          const { data } = await supabase.auth.getSession();
+          email = (data?.session?.user?.email || '').trim().toLowerCase();
+        } catch (e) {}
+      }
 
+      if (email) {
+        const role = resolveUserRole(email);
+        setUserEmail(email);
+        setUserRole(role);
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.setItem('userEmail', email);
+          window.sessionStorage.setItem('userRole', role);
+        }
+
+        const profiles = getAllUserProfiles();
+        setUserProfiles(profiles);
+        const myProfile = profiles[email] || getUserProfile(email);
+        if (myProfile) {
+          if (myProfile.name) setValue('coordinatorName', myProfile.name);
+          if (myProfile.institute) setValue('institute', myProfile.institute);
+        }
+      } else {
+        setUserEmail('');
+        setUserRole('faculty');
+      }
+    };
+
+    syncUserAuthSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      syncUserAuthSession(session);
+    });
+
+    const handleCustomAuth = (e) => {
+      if (e.detail?.userEmail) {
+        const email = e.detail.userEmail.trim().toLowerCase();
+        const role = e.detail.userRole || resolveUserRole(email);
+        setUserEmail(email);
+        setUserRole(role);
+      }
+    };
+    window.addEventListener('vdt-auth-change', handleCustomAuth);
+
+    setUserRolesRegistry(getUserRolesRegistry());
     fetchBookingsFromDatabase();
 
     const savedTheme = localStorage.getItem('theme') || 'dark';
@@ -268,6 +304,11 @@ export default function RequisitionPortal() {
         document.documentElement.classList.remove('light-mode');
       }
     }
+
+    return () => {
+      subscription.unsubscribe();
+      window.removeEventListener('vdt-auth-change', handleCustomAuth);
+    };
   }, []);
 
   const fetchBookingsFromDatabase = async () => {

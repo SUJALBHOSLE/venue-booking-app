@@ -151,6 +151,7 @@ export default function RootLayout({ children }) {
         if (typeof window !== 'undefined') {
           window.sessionStorage.setItem('userRole', role);
           window.sessionStorage.setItem('userEmail', email);
+          window.dispatchEvent(new CustomEvent('vdt-auth-change', { detail: { userEmail: email, userRole: role } }));
         }
 
         const existingProfile = getUserProfile(email);
@@ -161,10 +162,22 @@ export default function RootLayout({ children }) {
       } else {
         setAuthError(`Access Denied: ${email} is not an authorized institute email address.`);
         await supabase.auth.signOut();
-        if (typeof window !== 'undefined') window.sessionStorage.clear();
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.clear();
+          window.dispatchEvent(new CustomEvent('vdt-auth-change', { detail: { userEmail: '', userRole: null } }));
+        }
         setSession(null);
         setUserRole(null);
         setUserEmail('');
+      }
+    } else {
+      if (typeof window !== 'undefined') {
+        const savedRole = window.sessionStorage.getItem('userRole');
+        if (!savedRole) {
+          setSession(null);
+          setUserRole(null);
+          setUserEmail('');
+        }
       }
     }
     setLoading(false);
