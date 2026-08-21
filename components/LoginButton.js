@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import { performCompleteLogout } from '@/lib/accessControl';
 import { LogOut, UserCheck } from 'lucide-react';
 
 export default function LoginButton() {
@@ -8,7 +9,6 @@ export default function LoginButton() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Check active session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
     });
@@ -26,7 +26,10 @@ export default function LoginButton() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'azure',
         options: {
-          scopes: 'email openid profile',
+          scopes: 'email openid profile User.Read',
+          queryParams: {
+            prompt: 'select_account',
+          },
           redirectTo: typeof window !== 'undefined' ? window.location.origin : '', 
         },
       });
@@ -39,22 +42,7 @@ export default function LoginButton() {
   };
 
   const handleLogout = async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch (e) {
-      console.log("Signout error:", e);
-    }
-    if (typeof window !== 'undefined') {
-      window.sessionStorage.clear();
-      window.localStorage.removeItem('userRole');
-      window.localStorage.removeItem('userEmail');
-      // Wipe any lingering cookies
-      document.cookie.split(";").forEach((c) => {
-        document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-      });
-    }
-    setUser(null);
-    window.location.reload();
+    await performCompleteLogout();
   };
 
   if (user) {
@@ -66,7 +54,7 @@ export default function LoginButton() {
         </div>
         <button 
           onClick={handleLogout}
-          className="flex items-center gap-1 text-xs font-bold bg-stone-800 hover:bg-stone-700 text-stone-300 px-3 py-1.5 rounded-xl border border-stone-700 transition-all"
+          className="flex items-center gap-1 text-xs font-bold bg-stone-800 hover:bg-stone-700 text-stone-300 px-3 py-1.5 rounded-xl border border-stone-700 transition-all cursor-pointer"
         >
           <LogOut size={14} />
           <span className="hidden sm:inline">Sign Out</span>
@@ -79,7 +67,7 @@ export default function LoginButton() {
     <button 
       onClick={handleAzureLogin}
       disabled={loading}
-      className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-3.5 rounded-xl shadow-lg flex items-center gap-2 text-xs transition-all border border-blue-500/30 active:scale-95 disabled:opacity-50"
+      className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-3.5 rounded-xl shadow-lg flex items-center gap-2 text-xs transition-all border border-blue-500/30 active:scale-95 disabled:opacity-50 cursor-pointer"
     >
       <svg className="w-4 h-4 shrink-0" viewBox="0 0 23 23">
         <path fill="#f35325" d="M1 1h10v10H1z"/>

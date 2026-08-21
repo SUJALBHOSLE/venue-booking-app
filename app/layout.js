@@ -6,12 +6,11 @@ import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import './globals.css';
 import InspectProtection from '@/components/InspectProtection';
-import { resolveUserRole, getUserProfile, saveUserProfile } from '@/lib/accessControl';
+import { resolveUserRole, getUserProfile, saveUserProfile, performCompleteLogout } from '@/lib/accessControl';
 import { ShieldCheck, Sparkles, Building2, Lock, AlertCircle, ArrowRight, User, Phone, Briefcase, GraduationCap } from 'lucide-react';
 
 const IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 
-// High-quality campus venue & event photography for background brick slide
 const SLIDE_IMAGES_COL_1 = [
   "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=700&auto=format&fit=crop&q=80",
   "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=700&auto=format&fit=crop&q=80",
@@ -44,7 +43,6 @@ export default function RootLayout({ children }) {
   const [authError, setAuthError] = useState('');
   const [needsProfileOnboarding, setNeedsProfileOnboarding] = useState(false);
   
-  // Profile Onboarding Form State
   const [profileName, setProfileName] = useState('');
   const [profileContact, setProfileContact] = useState('');
   const [profileInstitute, setProfileInstitute] = useState('VSIT');
@@ -95,50 +93,25 @@ export default function RootLayout({ children }) {
   };
 
   const handleIdleLogout = async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch (e) {}
-    if (typeof window !== 'undefined') {
-      window.sessionStorage.clear();
-      window.localStorage.removeItem('userRole');
-      window.localStorage.removeItem('userEmail');
-      document.cookie.split(";").forEach((c) => {
-        document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-      });
-    }
-    setSession(null);
-    setUserRole(null);
-    setUserEmail('');
     alert("⚠️ Security Notice: Session closed after 15 minutes of inactivity.");
-    window.location.reload();
+    await performCompleteLogout();
   };
 
   const checkAuth = async () => {
-    const savedRole = typeof window !== 'undefined' ? window.sessionStorage.getItem('userRole') : null;
-    const savedEmail = typeof window !== 'undefined' ? window.sessionStorage.getItem('userEmail') : null;
-    
-    if (savedRole && savedEmail) {
-      setUserRole(savedRole);
-      setUserEmail(savedEmail);
-      
-      const existingProfile = getUserProfile(savedEmail);
-      if (!existingProfile || !existingProfile.isCompleted) {
-        setNeedsProfileOnboarding(true);
-      }
-      setLoading(false);
-      return;
+    setLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      validateUserSession(session);
+    } catch (e) {
+      validateUserSession(null);
     }
-
-    const { data: { session } } = await supabase.auth.getSession();
-    validateUserSession(session);
   };
 
-  const validateUserSession = async (session) => {
-    setLoading(true);
+  const validateUserSession = (session) => {
     setAuthError('');
 
-    if (session?.user) {
-      const email = (session.user.email || '').trim().toLowerCase();
+    if (session?.user?.email) {
+      const email = session.user.email.trim().toLowerCase();
       const emailDomain = email.split('@')[1] || '';
       const isAllowed = ALLOWED_DOMAINS.includes(emailDomain) || ALLOWED_DOMAINS.some(d => email.endsWith(d));
 
@@ -161,23 +134,18 @@ export default function RootLayout({ children }) {
         }
       } else {
         setAuthError(`Access Denied: ${email} is not an authorized institute email address.`);
-        await supabase.auth.signOut();
-        if (typeof window !== 'undefined') {
-          window.sessionStorage.clear();
-          window.dispatchEvent(new CustomEvent('vdt-auth-change', { detail: { userEmail: '', userRole: null } }));
-        }
-        setSession(null);
-        setUserRole(null);
-        setUserEmail('');
+        performCompleteLogout();
       }
     } else {
+      setSession(null);
+      setUserRole(null);
+      setUserEmail('');
       if (typeof window !== 'undefined') {
-        const savedRole = window.sessionStorage.getItem('userRole');
-        if (!savedRole) {
-          setSession(null);
-          setUserRole(null);
-          setUserEmail('');
-        }
+        window.sessionStorage.removeItem('userRole');
+        window.sessionStorage.removeItem('userEmail');
+        window.localStorage.removeItem('userRole');
+        window.localStorage.removeItem('userEmail');
+        window.dispatchEvent(new CustomEvent('vdt-auth-change', { detail: { userEmail: '', userRole: null } }));
       }
     }
     setLoading(false);
@@ -191,6 +159,9 @@ export default function RootLayout({ children }) {
         provider: 'azure', 
         options: { 
           scopes: 'email openid profile User.Read', 
+          queryParams: {
+            prompt: 'select_account',
+          },
           redirectTo: typeof window !== 'undefined' ? window.location.origin : '' 
         } 
       });
@@ -234,13 +205,9 @@ export default function RootLayout({ children }) {
         <body className="min-h-screen bg-[#07080c] flex items-center justify-center p-4 sm:p-6 relative overflow-hidden font-sans text-stone-100 selection:bg-orange-500 selection:text-white">
           <InspectProtection />
           
-          {/* ====================================================================== */}
-          {/* LAYER 1: CONTINUOUS 3-COLUMN VERTICAL PHOTO SLIDE MARQUEE */}
-          {/* ====================================================================== */}
           <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-35 scale-105">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 h-[200vh] -translate-y-24">
               
-              {/* Column 1 - Sliding Up */}
               <div className="flex flex-col gap-4 animate-slide-up-slow">
                 {[...SLIDE_IMAGES_COL_1, ...SLIDE_IMAGES_COL_1].map((src, i) => (
                   <div key={`c1-${i}`} className="w-full h-64 sm:h-80 rounded-3xl overflow-hidden border border-white/10 shadow-2xl shrink-0 bg-stone-900">
@@ -249,7 +216,6 @@ export default function RootLayout({ children }) {
                 ))}
               </div>
 
-              {/* Column 2 - Sliding Down */}
               <div className="flex flex-col gap-4 animate-slide-down-slow">
                 {[...SLIDE_IMAGES_COL_2, ...SLIDE_IMAGES_COL_2].map((src, i) => (
                   <div key={`c2-${i}`} className="w-full h-64 sm:h-80 rounded-3xl overflow-hidden border border-white/10 shadow-2xl shrink-0 bg-stone-900">
@@ -258,7 +224,6 @@ export default function RootLayout({ children }) {
                 ))}
               </div>
 
-              {/* Column 3 - Sliding Up (Visible on MD+) */}
               <div className="hidden md:flex flex-col gap-4 animate-slide-up-fast">
                 {[...SLIDE_IMAGES_COL_3, ...SLIDE_IMAGES_COL_3].map((src, i) => (
                   <div key={`c3-${i}`} className="w-full h-64 sm:h-80 rounded-3xl overflow-hidden border border-white/10 shadow-2xl shrink-0 bg-stone-900">
@@ -270,25 +235,14 @@ export default function RootLayout({ children }) {
             </div>
           </div>
 
-          {/* ====================================================================== */}
-          {/* LAYER 2: BRICK GRID PATTERN TEXTURE OVERLAY */}
-          {/* ====================================================================== */}
           <div className="absolute inset-0 brick-grid-texture pointer-events-none opacity-40"></div>
-
-          {/* ====================================================================== */}
-          {/* LAYER 3: RADIAL VIGNETTE & AMBIENT NEON GLOWS */}
-          {/* ====================================================================== */}
           <div className="absolute inset-0 bg-radial from-transparent via-[#07080c]/70 to-[#07080c]/95 pointer-events-none backdrop-blur-[3px]"></div>
           
           <div className="absolute top-[-20%] left-[-10%] w-[550px] h-[550px] bg-gradient-to-br from-orange-600/35 via-amber-500/20 to-transparent rounded-full blur-[140px] pointer-events-none animate-pulse"></div>
           <div className="absolute bottom-[-20%] right-[-10%] w-[600px] h-[600px] bg-gradient-to-tl from-indigo-600/35 via-purple-600/25 to-transparent rounded-full blur-[150px] pointer-events-none"></div>
 
-          {/* ====================================================================== */}
-          {/* LAYER 4: IMMERSIVE FOREGROUND SPATIAL CARD */}
-          {/* ====================================================================== */}
           <div className="w-full max-w-[490px] bg-[#10121b]/85 backdrop-blur-3xl border border-white/15 rounded-[38px] shadow-[0_25px_80px_rgba(0,0,0,0.85)] p-8 sm:p-12 relative z-10 animate-fade-in-up">
             
-            {/* Holographic Campus Pill */}
             <div className="flex justify-center mb-7">
               <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-white/[0.05] border border-white/10 shadow-inner backdrop-blur-md">
                 <div className="w-2.5 h-2.5 rounded-full bg-gradient-to-r from-orange-500 to-amber-400 animate-ping"></div>
@@ -298,7 +252,6 @@ export default function RootLayout({ children }) {
               </div>
             </div>
 
-            {/* Portal Headline & Clean Description */}
             <div className="text-center space-y-3 mb-9">
               <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white uppercase leading-tight bg-gradient-to-r from-white via-stone-100 to-stone-300 bg-clip-text text-transparent">
                 Step Into The Future
@@ -308,7 +261,6 @@ export default function RootLayout({ children }) {
               </p>
             </div>
 
-            {/* Error Message if any */}
             {authError && (
               <div className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-300 text-xs font-semibold flex items-start gap-2.5 leading-relaxed">
                 <AlertCircle size={18} className="shrink-0 text-red-400 mt-0.5" />
@@ -316,7 +268,6 @@ export default function RootLayout({ children }) {
               </div>
             )}
 
-            {/* Microsoft Azure OAuth Entry Point */}
             <div className="space-y-6">
               <button 
                 type="button" 
@@ -345,7 +296,6 @@ export default function RootLayout({ children }) {
     );
   }
 
-  // --- MAIN APPLICATION LAYOUT & FIRST-TIME PROFILE ONBOARDING MODAL ---
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -363,7 +313,6 @@ export default function RootLayout({ children }) {
           </div>
         )}
 
-        {/* First-Time User Profile Setup Modal */}
         {needsProfileOnboarding && (
           <div className="fixed inset-0 z-100 bg-[#07080c]/85 backdrop-blur-2xl flex items-center justify-center p-4">
             <div className="w-full max-w-lg bg-[#12131c] border border-white/10 rounded-[36px] shadow-2xl p-8 sm:p-10 space-y-6 animate-fade-in-up text-white">

@@ -17,7 +17,7 @@ import { generateGatePass } from '@/utils/generatePDF';
 import LoginButton from '@/components/LoginButton';
 import ThemeToggle from '@/components/ThemeToggle';
 import InteractiveCalendarWidget from '@/components/InteractiveCalendarWidget';
-import { getUserRolesRegistry, setUserRoleRights, removeUserRoleRights, resolveUserRole, getAllUserProfiles, getUserProfile, adminUpdateUserProfile } from '@/lib/accessControl';
+import { getUserRolesRegistry, setUserRoleRights, removeUserRoleRights, resolveUserRole, getAllUserProfiles, getUserProfile, adminUpdateUserProfile, performCompleteLogout } from '@/lib/accessControl';
 
 const SignatureCanvas = dynamic(() => import('react-signature-canvas'), { ssr: false });
 
@@ -347,20 +347,7 @@ export default function RequisitionPortal() {
   };
 
   const handleLogout = async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch (e) {
-      console.log("Signout error:", e);
-    }
-    if (typeof window !== 'undefined') {
-      window.sessionStorage.clear();
-      window.localStorage.removeItem('userRole');
-      window.localStorage.removeItem('userEmail');
-      document.cookie.split(";").forEach((c) => {
-        document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-      });
-    }
-    window.location.reload();
+    await performCompleteLogout();
   };
 
   // --- ACCESS CONTROL: ADMIN ROLE MANAGEMENT HANDLERS ---
